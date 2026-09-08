@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.9.0] — 2026-09-08
 
 ### Added
+- **WorkBuddy-exclusive positioning** — README.md / README.en.md now lead with
+  a "WorkBuddy 专属 Skill" badge and callout, plus a new *Why WorkBuddy-
+  exclusive* section (generation via WorkBuddy ImageGen, skill loading via
+  `SKILL.md` + `/taxue-imagegen`, and the Agent loop chaining
+  `fill_meta.py → generate → postcheck.py → dewm_v10.py`). README also spells
+  out that the CLIs (`preflight` / `postcheck` / `dewm_v10` / `explore`) still
+  run standalone anywhere.
 - **Track C · Photoreal Packaging Mockup** — studio-lit physical base +
   editorial monochrome ink layout + single-metaphor AM halftone graphic +
   giant stacked brand wordmark; Chinese meta-template with slots
@@ -22,6 +29,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Gallery samples for Track C: four packagings (coffee pouch /
   serum bottle + box / beverage can / rigid box) from the v1.9 r3 round
   where 4/4 images passed the verbatim-text check.
+- `SKILL.md` corrected from "two tracks" to "three tracks" in the front-matter
+  description and the §0 header — Track C shipped in v1.9 but both lines were
+  never updated.
 
 ## [1.8.0] — 2026-09-07
 

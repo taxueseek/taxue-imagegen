@@ -10,8 +10,11 @@
 
 # taxue-imagegen · 生图元提示词库
 
+> 🧩 **WorkBuddy 专属 Skill** — 本技能只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑得通：出图走 WorkBuddy 的 ImageGen 能力，填槽与验收由 Agent 调用 `scripts/*.py` 完成，技能本体经 `npx skills add` 装进 `~/.workbuddy/skills/`。脱离 WorkBuddy，脚本能单跑（预检、量测、去水印都是独立 CLI），但「一句话 → 一张可交付的图」这条闭环不成立。
+
 **三条赛道、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机。**
 
+[![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-专属%20SKILL-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
@@ -34,7 +37,7 @@
 
 ## 这是什么
 
-踏雪生图不是一个风格库，也不是一个生图 prompt 模板集——它是一套**元提示词库 + 出图工作流**，专为 WorkBuddy / Agent 循环设计。核心难点不是「写一句漂亮的话」，而是「让模型每次都稳定地产出符合预期的图，并且翻车时能快速定位修复」。
+踏雪生图不是一个风格库，也不是一个生图 prompt 模板集——它是一套**元提示词库 + 出图工作流**，是 **WorkBuddy 专属的生图 Skill**，专为 WorkBuddy 的 Agent 循环与内置 ImageGen 能力设计。核心难点不是「写一句漂亮的话」，而是「让模型每次都稳定地产出符合预期的图，并且翻车时能快速定位修复」。
 
 它做这件事的方式是三件套：
 
@@ -43,6 +46,18 @@
 - **一次验收**——`scripts/postcheck.py` 量测 + 底部文字带目检裁片 + 去水印 + 运行记账，验一张图从 3–4 次工具往返压到 1 次。
 
 v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动写到 `scripts/logs/runs.csv`，顶部留白、泛黄 R-B、文字带 OK 与否都进表；下一个 blocker 出现时，先看表，再改模板，而不是临时加禁令。
+
+### 为什么是「WorkBuddy 专属」
+
+三处依赖决定了它只在 WorkBuddy 里成立：
+
+| 依赖 | 说明 |
+|---|---|
+| **出图能力** | 调用 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 的 ImageGen（文生图 / 图生图）。模型在会话内切换——GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro，技能只管提示词与验收，不管模型路由 |
+| **技能加载** | `SKILL.md` frontmatter 描述 + `references/` 分层加载 + `/taxue-imagegen` 斜杠命令，全部由 WorkBuddy 的技能机制驱动 |
+| **Agent 循环** | `fill_meta.py` 填槽 → 出图 → `postcheck.py` 验收 → `dewm_v10.py` 去水印，这条链需要 Agent 在一个会话里连续调脚本和看图，不是一次性 prompt |
+
+不依赖 WorkBuddy 的部分：`scripts/preflight.py`、`postcheck.py`、`dewm_v10.py`、`explore.py` 都是独立 CLI，任何装了 Python 3 + `numpy` / `pillow` / `opencv-python-headless` 的环境都能单跑，只是没有上面的闭环。
 
 ## 示例作品
 
@@ -91,13 +106,21 @@ A 与 C 都用 `references/size-and-params.md` 的尺寸表（默认 `1024x1536`
 
 ## 怎么用
 
+前提：已安装 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview)（本技能为其专属生图 Skill）。
+
 安装：
 
 ```bash
 npx skills add taxueseek/taxue-imagegen
 ```
 
-装好后直接说，例如：
+脚本依赖（只用 CLI 时才需要装，WorkBuddy 会话内已就绪）：
+
+```bash
+pip install numpy pillow opencv-python-headless
+```
+
+装好后**在 WorkBuddy 里**直接说，例如：
 
 - 「用赛道 A 做一张 2:3 概念海报，视觉风格浮世绘、主题无常、英文标题 WAITING」
 - 「赛道 B 来一张满铺犬种图鉴，14 只、主题用 `fill_meta.py B --theme 鸟` 改法」
@@ -148,7 +171,7 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 
 ## 集成与同类
 
-同属踏雪生图系列，先认门，再用对技能：
+同属踏雪生图系列——四个都是 **WorkBuddy 专属 Skill**，先认门，再用对技能：
 
 | 技能 | 一句话 | 仓库 |
 |---|---|---|

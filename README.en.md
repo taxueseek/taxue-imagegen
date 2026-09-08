@@ -10,8 +10,11 @@
 
 # taxue-imagegen · Meta-Prompt Library
 
+> 🧩 **WorkBuddy-exclusive Skill** — this only works inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview): generation goes through WorkBuddy's ImageGen, slot filling and verification run via `scripts/*.py` called by the Agent, and the skill itself is installed into `~/.workbuddy/skills/` with `npx skills add`. Outside WorkBuddy the scripts still run standalone (preflight, measurement, watermark removal are plain CLIs), but the "one sentence → one deliverable image" loop does not hold.
+
 **Three tracks, four workflows — turn a sentence, a theme, or a photo into a stable cover, group illustration, or photoreal packaging mockup.**
 
+[![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
@@ -34,7 +37,7 @@
 
 ## What this is
 
-taxue-imagegen is not a style library and not a prompt collection — it is a **meta-prompt library + image-generation workflow** designed for the WorkBuddy / Agent loop. The hard problem is not "writing one pretty sentence" — it is "making the model reliably produce the expected image every time, and fixing it fast when it doesn't."
+taxue-imagegen is not a style library and not a prompt collection — it is a **meta-prompt library + image-generation workflow**, and it is a **WorkBuddy-exclusive image-generation Skill**, built for WorkBuddy's Agent loop and its built-in ImageGen. The hard problem is not "writing one pretty sentence" — it is "making the model reliably produce the expected image every time, and fixing it fast when it doesn't."
 
 It does that with three things:
 
@@ -43,6 +46,18 @@ It does that with three things:
 - **One-shot verification** — `scripts/postcheck.py` measures metrics + crops the text band for visual inspection + strips watermarks + appends to `runs.csv`. Verifying one image drops from 3–4 round-trips to 1.
 
 Since v1.6 there's a **data feedback loop for template tuning**: every output is logged to `scripts/logs/runs.csv` (top padding, yellowing R-B, text-band verdict, …). When the next blocker appears, read the table first, then patch the template — never stack a second ad-hoc prohibition.
+
+### Why "WorkBuddy-exclusive"
+
+Three dependencies make it WorkBuddy-only:
+
+| Dependency | What it means |
+|---|---|
+| **Generation** | Calls [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview)'s ImageGen (text-to-image / image-to-image). Models are switched inside the session — GPT Image 2, Grok Imagine 2, Nano Banana 2, Seedream 5.0 Pro. The skill owns prompts and verification, not model routing. |
+| **Skill loading** | `SKILL.md` frontmatter description + layered `references/` loading + the `/taxue-imagegen` slash command are all driven by WorkBuddy's skill mechanism. |
+| **Agent loop** | `fill_meta.py` fills slots → generate → `postcheck.py` verifies → `dewm_v10.py` strips the watermark. That chain needs an Agent running scripts and reading images across turns, not a one-shot prompt. |
+
+What works anywhere: `scripts/preflight.py`, `postcheck.py`, `dewm_v10.py`, and `explore.py` are standalone CLIs. Any environment with Python 3 + `numpy` / `pillow` / `opencv-python-headless` can run them — you just don't get the loop above.
 
 ## Examples
 
@@ -91,13 +106,21 @@ A and C use the size table in `references/size-and-params.md` (default `1024x153
 
 ## How to use
 
+Prerequisite: [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) installed — this is a WorkBuddy-exclusive image-generation Skill.
+
 Install:
 
 ```bash
 npx skills add taxueseek/taxue-imagegen
 ```
 
-Then just say, e.g.:
+Script dependencies (only needed if you use the CLIs standalone — already present inside a WorkBuddy session):
+
+```bash
+pip install numpy pillow opencv-python-headless
+```
+
+Then just say it **inside WorkBuddy**, e.g.:
 
 - "Track A, a 2:3 concept poster — ukiyo-e style, theme: impermanence, English headline WAITING"
 - "Track B, full-bleed dog lineup, 14 dogs, modify with `fill_meta.py B --theme bird`"
@@ -148,7 +171,7 @@ CI: [`.github/workflows/validate.yml`](./.github/workflows/validate.yml).
 
 ## Sibling skills
 
-Same family of WorkBuddy image-generation skills — pick the right one for the job:
+Same family of image-generation skills — all four are **WorkBuddy-exclusive Skills** — pick the right one for the job:
 
 | Skill | One-liner | Repo |
 |---|---|---|
