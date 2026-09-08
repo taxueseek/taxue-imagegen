@@ -19,7 +19,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Notes
 - Track C uses `1152x1536` (3:4) — width 1152 differs from Track A's default
   1024 (2:3). The width is intentional for a true 3:4 ratio.
-- No gallery samples for Track C yet — archive pre-dates v1.9.
+- Gallery samples for Track C: four packagings (coffee pouch /
+  serum bottle + box / beverage can / rigid box) from the v1.9 r3 round
+  where 4/4 images passed the verbatim-text check.
 
 ## [1.8.0] — 2026-09-07
 

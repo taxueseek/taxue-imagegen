@@ -46,7 +46,7 @@ v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动�
 
 ## 示例作品
 
-> 图片放在 `examples/` 目录，由本技能实际出图产出（已剥离 AI 合规水印，版权见 [ASSET-LICENSE.md](./ASSET-LICENSE.md)）。赛道 A 三张代表三种典型风格，赛道 B 两张代表两种密度等级，赛道 C 见 [SKILL.md §赛道 C](./SKILL.md) 模板（仓库归档时暂无现成样张）。
+> 图片放在 `examples/` 目录，由本技能实际出图产出（已剥离 AI 合规水印，版权见 [ASSET-LICENSE.md](./ASSET-LICENSE.md)）。赛道 A 三张代表三种典型风格，赛道 B 两张代表两种密度等级，赛道 C 四张对应 `references/packaging-editorial.md` §二 槽位表的四种包装形态（咖啡袋 / 精华瓶 + 纸盒 / 饮料罐 / 天地盖硬盒），文字逐字全对（v1.9 r3 4/4 实测）。
 
 | 踏雪（赛道 A · 水墨） | SHEER（赛道 A · 穿插型） | 字符点阵（赛道 A · 实验） |
 |:---:|:---:|:---:|
@@ -56,7 +56,15 @@ v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动�
 |:---:|:---:|
 | <img src="./examples/example-B-dog-lineup.png" alt="赛道 B 十四只犬种群像图鉴" width="280"> | <img src="./examples/example-B-travelers.png" alt="赛道 B 旅人、机器人、怪物混合群像" width="280"> |
 
-> 五张样张均无「AI 生成 / WORKBUDDY」平台水印——原图出图后经 `scripts/dewm_v10.py` 或 `scripts/rmwm.py` 像素级修复；公开分享请保留 [ASSET-LICENSE.md](./ASSET-LICENSE.md) 中关于样张的版权说明。
+| SLOW/ROAST（赛道 C · 咖啡袋） | PURE/ACTIVE（赛道 C · 精华瓶+纸盒） |
+|:---:|:---:|
+| <img src="./examples/example-C-01-coffee-pouch.png" alt="赛道 C 深焙棕 SLOW/ROAST 咖啡袋" width="280"> | <img src="./examples/example-C-02-glass-serum.png" alt="赛道 C 深靛蓝 PURE/ACTIVE 磨砂精华瓶 + 骨白纸盒" width="280"> |
+
+| BITTER/CITRUS（赛道 C · 饮料罐） | SILENT/HOURS（赛道 C · 天地盖硬盒） |
+|:---:|:---:|
+| <img src="./examples/example-C-03-beverage-can.png" alt="赛道 C 墨黑+柠檬黄 BITTER/CITRUS 饮料罐" width="280"> | <img src="./examples/example-C-04-lidded-box.png" alt="赛道 C 炭灰亚麻压纹 SILENT/HOURS 天地盖硬盒" width="280"> |
+
+> 九张样张均无「AI 生成 / WORKBUDDY」平台水印——原图出图后经 `scripts/dewm_v10.py` 或 `scripts/rmwm.py` 像素级修复；公开分享请保留 [ASSET-LICENSE.md](./ASSET-LICENSE.md) 中关于样张的版权说明。
 
 ## 三条赛道
 

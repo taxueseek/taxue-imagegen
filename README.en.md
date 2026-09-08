@@ -46,7 +46,7 @@ Since v1.6 there's a **data feedback loop for template tuning**: every output is
 
 ## Examples
 
-> Images in `examples/` are real outputs from this skill (AI compliance watermark stripped, see [ASSET-LICENSE.md](./ASSET-LICENSE.md)). Track A: three covers, three different styles. Track B: two density tiers. Track C: see the template in [SKILL.md Track C](./SKILL.md) (no gallery sample yet — added in v1.9).
+> Images in `examples/` are real outputs from this skill (AI compliance watermark stripped, see [ASSET-LICENSE.md](./ASSET-LICENSE.md)). Track A: three covers, three different styles. Track B: two density tiers. Track C: four packagings matching the four rows of `references/packaging-editorial.md` §2 (coffee pouch / serum bottle + box / beverage can / rigid box), text verbatim-correct (v1.9 r3 4/4 verified).
 
 | Ink Crane (Track A · ink) | SHEER (Track A · intercut) | Char-Matrix (Track A · experimental) |
 |:---:|:---:|:---:|
@@ -56,7 +56,15 @@ Since v1.6 there's a **data feedback loop for template tuning**: every output is
 |:---:|:---:|
 | <img src="./examples/example-B-dog-lineup.png" alt="Track B fourteen-breed canine lineup" width="280"> | <img src="./examples/example-B-travelers.png" alt="Track B travelers, robot, and monster mixed group" width="280"> |
 
-> All five samples are free of the "AI 生成 / WORKBUDDY" platform watermark — original outputs were pixel-repaired by `scripts/dewm_v10.py` or `scripts/rmwm.py`. For sharing/redistribution please respect [ASSET-LICENSE.md](./ASSET-LICENSE.md).
+| SLOW/ROAST (Track C · coffee pouch) | PURE/ACTIVE (Track C · serum bottle + box) |
+|:---:|:---:|
+| <img src="./examples/example-C-01-coffee-pouch.png" alt="Track C deep-roast brown SLOW/ROAST coffee pouch" width="280"> | <img src="./examples/example-C-02-glass-serum.png" alt="Track C deep-indigo PURE/ACTIVE frosted serum bottle + bone-white paper box" width="280"> |
+
+| BITTER/CITRUS (Track C · beverage can) | SILENT/HOURS (Track C · rigid box) |
+|:---:|:---:|
+| <img src="./examples/example-C-03-beverage-can.png" alt="Track C ink-black + lemon-yellow BITTER/CITRUS beverage can" width="280"> | <img src="./examples/example-C-04-lidded-box.png" alt="Track C charcoal-linen debossed SILENT/HOURS rigid box" width="280"> |
+
+> All nine samples are free of the "AI 生成 / WORKBUDDY" platform watermark — original outputs were pixel-repaired by `scripts/dewm_v10.py` or `scripts/rmwm.py`. For sharing/redistribution please respect [ASSET-LICENSE.md](./ASSET-LICENSE.md).
 
 ## Three tracks
 
