@@ -4,6 +4,38 @@ All notable changes to taxue-imagegen are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] — 2026-09-08
+
+### Fixed
+- **CI red on every push since the initial release** — `bench_dewm.py`,
+  `bench_dewm_align.py` and `probe_k_bias.py` hard-coded a machine-local
+  `SCRIPTS = "/Users/<user>/.workbuddy/..."` path, so `import dewm` raised
+  `ModuleNotFoundError` on the runner and the *Smoke import all scripts* step
+  failed after two files. On the author's machine the same scripts silently
+  imported the sibling modules from `~/.workbuddy/skills/`, which is why
+  `run_tests.sh` passed locally while CI failed. All three now resolve their
+  own directory via `os.path.dirname(os.path.abspath(__file__))`.
+- **Machine-local paths removed from the public repo** — the three benchmark
+  scripts no longer embed absolute sample-image paths; test images come from
+  the `TAXUE_BENCH_IMGS` environment variable (`os.pathsep`-separated) and the
+  scripts exit with a clear message when it is unset. `SKILL.md`,
+  `references/size-and-params.md` and `scripts/measure.py` no longer leak a
+  user-specific interpreter path — they use `PY=${PY:-python3}` / `pip install
+  pillow` instead.
+
+### Added
+- `scripts/run_tests.sh` grows a sixth check that fails on any machine-local
+  absolute path (`/Users/<name>/`, `/home/<name>/`) in tracked files, so this
+  class of leak cannot come back unnoticed.
+
+### Changed
+- **CI now runs `bash scripts/run_tests.sh`** instead of duplicating the
+  import / front-matter / preflight / critical-file checks inline. Local and CI
+  share one source of truth, which is what allowed the two to drift.
+- Workflow actions bumped to `actions/checkout@v5` and
+  `actions/setup-python@v6` (both Node 24), clearing the Node 20 deprecation
+  warning.
+
 ## [1.9.0] — 2026-09-08
 
 ### Added

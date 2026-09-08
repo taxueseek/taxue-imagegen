@@ -21,7 +21,7 @@
 [![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Model](https://img.shields.io/badge/TUNED%20FOR-hunyuan--image-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Credits](https://img.shields.io/badge/CREDITS-5--10%2Fimage-d73a49?style=flat-square&labelColor=333)](#积分消耗)
-[![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.9.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Stars](https://img.shields.io/github/stars/taxueseek/taxue-imagegen?style=flat-square&label=STARS&color=e37f2c&labelColor=333)](https://github.com/taxueseek/taxue-imagegen/stargazers)
@@ -224,6 +224,7 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 
 ## 更新记录
 
+- **v1.9.1**（2026-09-08）：修复公开后 CI 一直红——三个基准脚本把本机绝对路径写死，runner 上 `import dewm` 直接失败（本机却因为静默读到了 `~/.workbuddy/skills/` 的同名模块而全绿）；三个脚本改用自身目录定位，测试底图改由 `TAXUE_BENCH_IMGS` 环境变量传入，仓库不再携带本机路径；`run_tests.sh` 新增隐私扫描，CI 改跑同一套测试
 - **v1.9.0**（2026-09-08）：新增赛道 C「写实包装 Mockup」——棚拍实物做底 + 编辑风单色专色版面 + 单一隐喻图形 AM 网点 + 巨型堆叠品牌字，中文元模板槽位化（`references/packaging-editorial.md`，三轮实测 r3 4/4 文字逐字全对）
 - **v1.8.0**（2026-09-07）：新增 `dewm_v10`——v9 + 平底自适应融合，修「平色底上肉眼可见的水印残影」（amp 判 CLEAN 但人眼仍有痕），平底图 RMS 5.98→1.43，纹理图逐位不动零回归；标准水印默认改走 `dewm_v10.py`
 - **v1.7.0**（2026-09-07）：探索模式（`explore.py` + CSV 驱动）；去水印默认改 `pick_wm` 三版选最优（v6/v7/v8 各有擅长，实测 18 张原 v6 漏清/留噪点 5 张占 28%）；新增 `audit_wm` 残留审计（无原图也能定位 DIRTY 张）

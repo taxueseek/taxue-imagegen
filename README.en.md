@@ -21,7 +21,7 @@
 [![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Model](https://img.shields.io/badge/TUNED%20FOR-hunyuan--image-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Credits](https://img.shields.io/badge/CREDITS-5--10%2Fimage-d73a49?style=flat-square&labelColor=333)](#credit-cost)
-[![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.9.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Stars](https://img.shields.io/github/stars/taxueseek/taxue-imagegen?style=flat-square&label=STARS&color=e37f2c&labelColor=333)](https://github.com/taxueseek/taxue-imagegen/stargazers)
@@ -224,6 +224,7 @@ Same family of image-generation skills — pick the right one for the job. **Not
 
 ## Changelog
 
+- **v1.9.1** (2026-09-08): Fix CI failing on every push since publication — three benchmark scripts hard-coded a machine-local path, so `import dewm` failed on the runner (locally they silently picked up same-named modules from `~/.workbuddy/skills/`, which is why the suite passed on the author's machine); all three now resolve their own directory, test images come from `TAXUE_BENCH_IMGS`, and `run_tests.sh` gains a privacy scan while CI runs that same suite.
 - **v1.9.0** (2026-09-08): Add Track C "Photoreal Packaging Mockup" — studio-lit physical base + editorial monochrome ink layout + single-metaphor AM halftone graphic + giant stacked brand wordmark, Chinese meta-template with slots (`references/packaging-editorial.md`, three rounds, r3 4/4 text verbatim-correct).
 - **v1.8.0** (2026-09-07): Add `dewm_v10` — v9 + flat-area adaptive fusion, fixes "visually visible watermark ghosts on flat backgrounds" (amp says CLEAN but the eye sees residue); flat-background RMS 5.98 → 1.43, textured images byte-identical (zero regression); default watermark removal switches to `dewm_v10.py`.
 - **v1.7.0** (2026-09-07): Exploration mode (`explore.py` + CSV-driven); default watermark removal switches to `pick_wm` (v6/v7/v8 each have a specialty; 18-sample test showed v6 missed/left noise on 5 of 18, 28%); add `audit_wm` residual audit (works without source images to flag DIRTY).

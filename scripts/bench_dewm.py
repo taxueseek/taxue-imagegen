@@ -22,22 +22,15 @@ import sys
 import cv2
 import numpy as np
 
-SCRIPTS = "/Users/taxuexunxian/.workbuddy/skills/taxue-imagegen/scripts"
-sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import dewm as v6mod          # noqa: E402
 import dewm_v7 as v7mod       # noqa: E402
 import dewm_v8 as v8mod       # noqa: E402
 
-IMGS = [
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/01_surreal.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/03_popart.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/05_woodcut.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/06_qinglv.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/08_nouveau.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/09_byzantine.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_art_test/07_prayer.png",
-]
+# 测试底图由环境变量提供（os.pathsep 分隔），仓库不携带原图：
+#   TAXUE_BENCH_IMGS="a.png:b.png" python3 bench_dewm.py
+IMGS = [p for p in os.environ.get("TAXUE_BENCH_IMGS", "").split(os.pathsep) if p]
 
 K_TRUES = [0.8, 1.0, 1.3]
 VARIANTS = ["v6", "v7", "v8g", "v8", "v8e"]
@@ -70,6 +63,8 @@ def run_all(wm):
 
 
 def main():
+    if not IMGS:
+        sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
     a, (x0, y0) = v8mod.load_template(1024, 1536)
     print(f"α 模板: shape={a.shape} max={a.max():.3f} 锚点右下角 ({x0},{y0})")
     print(f"测试: {len(IMGS)} 种底子 × {len(K_TRUES)} 种不透明度 = {len(IMGS)*len(K_TRUES)} 组\n")

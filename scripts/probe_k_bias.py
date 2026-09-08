@@ -7,20 +7,18 @@
 
 对照实验：把 mask 阈值放宽到 a>0.01（把所有受水印影响像素都排除在 inpaint 源之外）。
 """
+import os
 import sys
 
 import cv2
 import numpy as np
 
-SCRIPTS = "/Users/taxuexunxian/.workbuddy/skills/taxue-imagegen/scripts"
-sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dewm_v8 as v8mod  # noqa: E402
 
-IMGS = [
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/01_surreal.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/05_woodcut.png",
-    "/Users/taxuexunxian/WorkBuddy/2026-09-07-23-36-47/generated-images/v5_wave2/09_byzantine.png",
-]
+# 测试底图由环境变量提供（os.pathsep 分隔），仓库不携带原图：
+#   TAXUE_BENCH_IMGS="a.png:b.png" python3 probe_k_bias.py
+IMGS = [p for p in os.environ.get("TAXUE_BENCH_IMGS", "").split(os.pathsep) if p]
 
 
 def fit_k(wm, a, x0, y0, mask_thr, C=255.0):
@@ -43,6 +41,8 @@ def fit_k(wm, a, x0, y0, mask_thr, C=255.0):
 
 
 def main():
+    if not IMGS:
+        sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
     a, (x0, y0) = v8mod.load_template(1024, 1536)
     print(f"{'底子':<14} {'k_true':>6} | {'k̂ (mask>0.05)':>14} {'k̂ (mask>0.01)':>14} {'k̂/mask0.01':>11}")
     print("-" * 60)

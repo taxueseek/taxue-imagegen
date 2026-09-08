@@ -478,7 +478,8 @@ find ~/Pictures/WorkBuddy/<日期> -name "*关键词*"
 3. **搜索窗**：±28px × 8 档尺度 {0.92…1.08 步 2%}；conf 仅作**对齐开关**（≥0.35 启用对齐，<0.35 退到基准位）。**v9.1 已删除 conf 拒动手门**（v9.0 18/18 假阴性：NCC 被平白角与满纹理角同时稀释）；干净图保护改由 k̂ 下限 0 承担，无水印时 k̂≈0 自然 no-op。
 4. `--no-align` 关闭对齐（=v8 行为，A/B 用）；`--refine N` α 残差精修（消融实测无收益，k 拟合已吸收强度维，保留仅调试用）
 
-**合成基准（bench_dewm_align.py：6 用例 × 4 底子，漂移框∪基准框 PSNR）**：
+**合成基准（bench_dewm_align.py：6 用例 × 4 底子，漂移框∪基准框 PSNR）**——
+底图由环境变量传入，仓库不带原图：`TAXUE_BENCH_IMGS="a.png:b.png" python3 scripts/bench_dewm_align.py`
 
 | 用例 | v6 | v8 | v9 | v9 找到的偏移 |
 |---|---|---|---|---|

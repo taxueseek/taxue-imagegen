@@ -1,6 +1,6 @@
 ---
 name: taxue-imagegen
-version: 1.9.0
+version: 1.9.1
 updated: 2026-09-08
 agent_created: true
 description: >-
@@ -132,7 +132,7 @@ description: >-
 ## 4. 出图后验收（measure.py）
 
 ```bash
-PY=/Users/taxuexunxian/.workbuddy/binaries/python/envs/default/bin/python
+PY=${PY:-python3}   # 换成你的解释器（WorkBuddy 内置：~/.workbuddy/binaries/python/envs/default/bin/python）
 $PY ~/.workbuddy/skills/taxue-imagegen/scripts/measure.py a.png b.png c.png
 $PY .../measure.py --top poster.png            # 加测顶部 25% 留白（赛道 A 必用）
 $PY .../measure.py --grid /tmp/grid.png *.png  # 同时拼一张对比图
@@ -186,7 +186,7 @@ $PY .../measure.py --grid /tmp/grid.png *.png  # 同时拼一张对比图
 | `scripts/dewm_v8.py` | 自适应反解 + k 拟合 + 物理边界守卫（低对比水印更干净，但在已平滑区会过拟合出鬼影） |
 | `scripts/dewm_v9.py` | **v8 + 锚点对齐（当前最优单版，v9.1）**：三重评分（灰度 NCC+梯度 NCC+方差比）±28px×8 档尺度对齐，k̂ 下限 0（无水印自动 no-op）；conf 仅作对齐开关不作门控。合成基准 6 用例平均 PSNR 69.81 vs v8 44.49（坑 21） |
 | `scripts/dewm2.py` | Qwen 版无模板去水印：逐像素向量投影 + RMS 校验门 + 彩度/亮度守卫（来源 .qwenworkcn）。适合未知版式水印；纹理区残留是短板（byzantine 18dB）。已在坑 21 实测归档 |
-| `scripts/bench_dewm_align.py` | 去水印位置/尺度维合成基准（v6/v8/v9 三方 PSNR 对比 + 对齐精度验证），改去水印代码必跑 |
+| `scripts/bench_dewm_align.py` | 去水印位置/尺度维合成基准（v6/v8/v9 三方 PSNR 对比 + 对齐精度验证），改去水印代码必跑。用法：`TAXUE_BENCH_IMGS="a.png:b.png" python3 scripts/bench_dewm_align.py`（`bench_dewm.py` / `probe_k_bias.py` 同） |
 | `scripts/dewm_v10.py` | **当前最优单版（v1.8 起默认）**：v9 管线 + 平底自适应融合。检测水印框外紧邻带 std，<12 判平底 → 反解结果与 inpaint 背景按 α 斜坡融合（`--no-fuse` 关，=v9 行为；`--flat-thr` 调判据）。平底图 RMS 5.98→1.43，纹理图逐位不动（坑 22） |
 | `scripts/pick_wm.py` | 疑难图入口——对每张图跑 v6/v7/v8/v9 四版，按残留签名分自动选最佳，输出到 `_clean/`（**绝不覆盖原图**）。注意：amp 签名分偏袒 v7 的过度平滑（坑 21 教训 4），选后必做视觉抽检；单版能解决时优先 `dewm_v10.py`，更快且可解释 |
 | `scripts/audit_wm.py` | 残留审计（无原图也能用）：拟合当前图实际不透明度 k̂ + R² + amp，|amp|≥2.5 判 DIRTY；输出表格 + 三联目检图 |

@@ -88,7 +88,7 @@ Quality：`low`
 - **可用方案 = 本地像素修复** `scripts/rmwm.py`（OpenCV Telea + top-hat 字形掩膜：只修水印笔画，框内留白/纹理/色块保留）：
 
 ```bash
-PY=/Users/taxuexunxian/.workbuddy/binaries/python/envs/default/bin/python
+PY=${PY:-python3}   # 换成你的解释器（WorkBuddy 内置：~/.workbuddy/binaries/python/envs/default/bin/python）
 $PY ~/.workbuddy/skills/taxue-imagegen/scripts/rmwm.py a.png            # 输出 a_nw.png
 $PY ~/.workbuddy/skills/taxue-imagegen/scripts/rmwm.py *.png --check    # 只检测不改图
 $PY ~/.workbuddy/skills/taxue-imagegen/scripts/rmwm.py *.png --out DIR  # 批量输出到目录

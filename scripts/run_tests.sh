@@ -10,7 +10,7 @@ pass=0
 fail=0
 
 echo ""
-echo "[1/5] import-check all scripts"
+echo "[1/6] import-check all scripts"
 ok=1
 for f in scripts/*.py; do
     if python3 -c "
@@ -29,7 +29,7 @@ done
 if [ "$ok" -eq 1 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 
 echo ""
-echo "[2/5] SKILL.md front-matter"
+echo "[2/6] SKILL.md front-matter"
 if python3 - <<'PY'
 import re, sys
 with open("SKILL.md", encoding="utf-8") as f:
@@ -50,7 +50,7 @@ else
 fi
 
 echo ""
-echo "[3/5] preflight smoke test on Track A template"
+echo "[3/6] preflight smoke test on Track A template"
 if PYTHONPATH=scripts python3 - <<'PY'
 import re, sys, subprocess, tempfile, os
 text = open("references/poster-v5.md", encoding="utf-8").read()
@@ -86,7 +86,7 @@ else
 fi
 
 echo ""
-echo "[4/5] critical files exist"
+echo "[4/6] critical files exist"
 missing=""
 for f in README.md README.en.md CHANGELOG.md LICENSE ASSET-LICENSE.md \
          scripts/run_tests.sh scripts/fill_meta.py scripts/postcheck.py scripts/preflight.py \
@@ -105,12 +105,27 @@ else
 fi
 
 echo ""
-echo "[5/5] hero asset present"
+echo "[5/6] hero asset present"
 if [ -f assets/readme/hero.png ] && [ -f assets/readme/hero.svg ]; then
     echo "  OK"
     pass=$((pass+1))
 else
     echo "  FAIL: assets/readme/hero.{png,svg} missing"
+    fail=$((fail+1))
+fi
+
+echo ""
+echo "[6/6] privacy: no machine-local absolute paths"
+leaks=$(grep -rnE '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/' \
+    --include='*.py' --include='*.sh' --include='*.md' --include='*.yml' --include='*.yaml' \
+    --exclude-dir=.git --exclude-dir=__pycache__ . 2>/dev/null \
+    | grep -vE '/(Users|home)/(runner|example|user|yourname)/' || true)
+if [ -z "$leaks" ]; then
+    echo "  OK"
+    pass=$((pass+1))
+else
+    echo "  FAIL: machine-local absolute paths found:"
+    echo "$leaks" | sed 's/^/    /' | head -20
     fail=$((fail+1))
 fi
 
