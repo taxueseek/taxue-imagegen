@@ -14,7 +14,7 @@
 
 **三条赛道、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机。**
 
-[![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-专属%20SKILL-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
+[![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
