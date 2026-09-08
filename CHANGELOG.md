@@ -1,0 +1,119 @@
+# Changelog
+
+All notable changes to taxue-imagegen are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.9.0] — 2026-09-08
+
+### Added
+- **Track C · Photoreal Packaging Mockup** — studio-lit physical base +
+  editorial monochrome ink layout + single-metaphor AM halftone graphic +
+  giant stacked brand wordmark; Chinese meta-template with slots
+  (`references/packaging-editorial.md`, three rounds, r3 4/4 text
+  verbatim-correct).
+- `references/packaging-editorial.md` §1 template, §2 slot table with four
+  real packagings (coffee bag / serum bottle + box / beverage can / rigid
+  box), §3 hard rules (eight verified rules), §4 padding/density hints.
+
+### Notes
+- Track C uses `1152x1536` (3:4) — width 1152 differs from Track A's default
+  1024 (2:3). The width is intentional for a true 3:4 ratio.
+- No gallery samples for Track C yet — archive pre-dates v1.9.
+
+## [1.8.0] — 2026-09-07
+
+### Added
+- `scripts/dewm_v10.py` — v9 + flat-area adaptive fusion. Fuses the
+  reverse-alpha result with the inpainted background via an alpha ramp when
+  the area just outside the watermark box is detected as flat
+  (`std < 12`). Fixes "amp says CLEAN but the eye sees residue" — the
+  shape mismatch was being treated as texture.
+- `scripts/metric_flat.py` — flat-area residual RMS meter for the
+  watermark box.
+
+### Changed
+- Default watermark removal switches from `dewm_v9.py` to `dewm_v10.py`.
+  Behavior unchanged on textured images (byte-identical); flat-background
+  images see RMS 5.98 → 1.43.
+- `scripts/postcheck.py` `--dewm` now invokes `dewm_v10.py`. Output line
+  gains `flat=Y/N(std=)` so flat-area fusion is visible at a glance.
+
+## [1.7.0] — 2026-09-07
+
+### Added
+- **Exploration mode** — `scripts/explore.py` + CSV-driven prompt batch;
+  `references/explore-mode.md` documents single-style 2–5 and multi-style
+  5–9 quotas, batch ≤ 3 per round, `settle` rename to prevent same-second
+  timestamp collisions (pitfall 17).
+- `scripts/pick_wm.py` — four-way picker (v6 / v7 / v8 / v9) auto-selects
+  the cleanest version; output goes to `_clean/`, never overwrites source.
+- `scripts/audit_wm.py` — residual audit; works without source images,
+  fits current image's actual opacity `k̂` + R² + amp, `|amp| ≥ 2.5`
+  flags DIRTY.
+- `scripts/dewm_io.py` — shared IO layer for the dewm scripts: overwrite
+  guard (default writes to `_clean/`, `--inplace` required to overwrite
+  source) + Unicode-safe Chinese path read/write.
+
+### Changed
+- Default watermark removal now goes through `pick_wm.py` for non-trivial
+  inputs; v1.8+ this is `dewm_v10.py` instead.
+- 18-image test: the previous default (`dewm_v6.py`) left noise or missed
+  the watermark on 5 of 18 (28%). Picker eliminates most of these.
+
+## [1.6.0] — 2026-09-07
+
+### Added
+- `scripts/postcheck.py` — single-call verification after generation:
+  metrics (reuse `measure.py`) + bottom text-band 2× crop + dewm
+  reverse-alpha watermark removal + append to `scripts/logs/runs.csv`.
+  Total < 0.5 s. Establishes the data feedback loop for template tuning.
+- Three-tier review card: **blocker** (yellowing R-B ≥ 3 / top_noise ≥ 6 /
+  top invaded / missing or wrong text / duplicated headline) permits one
+  targeted regeneration changing one thing only; **fixable** does not
+  permit regen; **pass** = metrics in threshold + text verbatim correct.
+
+### Changed
+- Verification round-trips drop from 3–4 (measure / dewm / manual crop /
+  manual log) to 1 (`postcheck.py`).
+
+## [1.5.0] — 2026-09-07
+
+### Added
+- `scripts/fill_meta.py` — mechanical slot fill for Track A. Reads
+  `references/poster-v5.md` §1 as single source of truth, performs
+  verbatim replacement, derives `{N}` and the character list automatically,
+  pre-validates punctuation, runs preflight before emitting. `--list`
+  enumerates slots; `--manpu` switches to the full-bleed variant.
+- Three-tier review card (see v1.6.0 entry).
+- Production quota: 1 image by default.
+
+### Notes
+- Borrowed the pipeline pattern from `taxue-halftone` — the principle is
+  the same: the template is verified asset, the LLM must not rewrite it.
+
+## [1.4.0] — 2026-09-06
+
+### Added
+- `references/size-and-params.md` — ImageGen parameter table + size
+  measurement. `size` accepts arbitrary pixel counts (not just the three
+  schema examples); 1024 / 1152 / 1536 long-edge variants all output
+  exactly.
+
+## [1.0.0] — 2026-09-01
+
+### Added
+- Initial release. Two tracks (Track A vertical concept poster, Track B
+  hand-drawn group illustration), five themes, mechanical slot fill,
+  single-source templates, Explore mode in-script, watermark removal
+  (rmwm + dewm v1).
+- `references/pitfalls.md` — initial 12 verified pitfalls.
+- `references/poster-v5.md` §1 — v5.0 baseline template.
+
+[1.9.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.9.0
+[1.8.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.8.0
+[1.7.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.7.0
+[1.6.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.6.0
+[1.5.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.5.0
+[1.4.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.4.0
+[1.0.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.0.0

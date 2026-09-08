@@ -1,0 +1,26 @@
+# Local personalization — never commit
+memory/
+user-preferences.md
+
+# Local test artifacts
+_backup_*
+test-prompts.md
+*.png.tmp
+
+# OS
+.DS_Store
+
+# Local archive
+.trash/
+__pycache__/
+
+# Python virtualenv / build
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
