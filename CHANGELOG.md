@@ -14,6 +14,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `fill_meta.py → generate → postcheck.py → dewm_v10.py`). README also spells
   out that the CLIs (`preflight` / `postcheck` / `dewm_v10` / `explore`) still
   run standalone anywhere.
+- **Binding scope clarified** — only taxue-imagegen is WorkBuddy-exclusive.
+  taxue-creative-style / taxue-halftone / taxue-solar-polaroid ship prompts
+  with no platform, model, or Agent lock-in. The sibling-skills table now has
+  a "Binding" column saying so.
+- **Baseline model: hunyuan-image** — new section stating that every hard line
+  (background hex, copy ratio, top padding, overlap area, countable
+  constraints, `postcheck.py` thresholds) was measured on hunyuan-image; other
+  models work in principle but require re-verifying thresholds after a switch.
+- **Credit cost** — new section with a per-scenario estimate table (1 image
+  5–10 credits; each refinement round is a fresh full-price render; 3 rounds
+  × 2 images ≈ 30–60) and three saving rules (lock aspect ratio, preflight,
+  batch edits). Badge + nav link + a note in "How to use".
+- **SKILL.md** — §0 grows from two pre-flight items to three (add "preflight
+  first", which is free) and states that refinement rounds bill again.
 - **Track C · Photoreal Packaging Mockup** — studio-lit physical base +
   editorial monochrome ink layout + single-metaphor AM halftone graphic +
   giant stacked brand wordmark; Chinese meta-template with slots

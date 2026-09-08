@@ -10,11 +10,17 @@
 
 # taxue-imagegen · 生图元提示词库
 
-> 🧩 **WorkBuddy 专属 Skill** — 本技能只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑得通：出图走 WorkBuddy 的 ImageGen 能力，填槽与验收由 Agent 调用 `scripts/*.py` 完成，技能本体经 `npx skills add` 装进 `~/.workbuddy/skills/`。脱离 WorkBuddy，脚本能单跑（预检、量测、去水印都是独立 CLI），但「一句话 → 一张可交付的图」这条闭环不成立。
+> 🧩 **WorkBuddy 专属 Skill** — 本技能只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑得通：出图走 WorkBuddy 的 ImageGen，填槽与验收由 Agent 调用 `scripts/*.py` 完成，技能本体经 `npx skills add` 装进 `~/.workbuddy/skills/`。同家族的 taxue-creative-style / taxue-halftone / taxue-solar-polaroid 是通用技能（不绑平台、不绑模型、不绑 Agent），**只有本技能绑定 WorkBuddy 运行时**。
+>
+> 🎯 **为 hunyuan-image 调优** — 三条赛道的提示词、硬底线与验收阈值，都是在本机 hunyuan-image 上一张张实测调出来的。其它模型原则上也能用，但文字排布、网点颗粒、留白这类表现会漂移，换模型时请重跑一张 + `postcheck.py` 校阈值。
+>
+> ⚠️ **积分消耗请悉知** — ImageGen 单张约 **5–10 积分**；而「看图 → 挑问题 → 调提示词 → 重出」的每一轮改进都是一次**全新出图**，同样计费。小幅多轮打磨成本上升很快（3 轮 × 2 张 ≈ 30–60 积分）。出图前先定画幅、先用 `preflight.py` 预检，是省积分最有效的两步。
 
 **三条赛道、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机。**
 
 [![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
+[![Model](https://img.shields.io/badge/TUNED%20FOR-hunyuan--image-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
+[![Credits](https://img.shields.io/badge/CREDITS-5--10%2Fimage-d73a49?style=flat-square&labelColor=333)](#积分消耗)
 [![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
@@ -29,6 +35,7 @@
   <a href="#三条赛道">三条赛道</a> ·
   <a href="#四种工作流">工作流</a> ·
   <a href="#怎么用">怎么用</a> ·
+  <a href="#积分消耗">积分消耗</a> ·
   <a href="#适合做什么">适合做什么</a> ·
   <a href="#基本规矩">基本规矩</a> ·
   <a href="#工程校验">工程校验</a> ·
@@ -49,15 +56,44 @@ v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动�
 
 ### 为什么是「WorkBuddy 专属」
 
-三处依赖决定了它只在 WorkBuddy 里成立：
+**专属的是平台，不是模型。** 三处依赖决定了它只在 WorkBuddy 里成立：
 
 | 依赖 | 说明 |
 |---|---|
-| **出图能力** | 调用 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 的 ImageGen（文生图 / 图生图）。模型在会话内切换——GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro，技能只管提示词与验收，不管模型路由 |
+| **出图能力** | 调用 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 的 ImageGen（文生图 / 图生图）。技能只管提示词与验收，不管模型路由 |
 | **技能加载** | `SKILL.md` frontmatter 描述 + `references/` 分层加载 + `/taxue-imagegen` 斜杠命令，全部由 WorkBuddy 的技能机制驱动 |
 | **Agent 循环** | `fill_meta.py` 填槽 → 出图 → `postcheck.py` 验收 → `dewm_v10.py` 去水印，这条链需要 Agent 在一个会话里连续调脚本和看图，不是一次性 prompt |
 
+也就是说：同系列另外三个技能（taxue-creative-style / taxue-halftone / taxue-solar-polaroid）交付的是**提示词本身**，你复制走就能在任何客户端、任何模型上用；本技能交付的是**一条跑在 WorkBuddy 里的流水线**——拿走提示词只是拿走了三分之一。
+
 不依赖 WorkBuddy 的部分：`scripts/preflight.py`、`postcheck.py`、`dewm_v10.py`、`explore.py` 都是独立 CLI，任何装了 Python 3 + `numpy` / `pillow` / `opencv-python-headless` 的环境都能单跑，只是没有上面的闭环。
+
+### 调优基准模型是 hunyuan-image
+
+三条赛道的所有"硬底线"——背景色十六进制、文字三级比例、顶部留白、交叠面积、可数约束（最大角色 ≤ 画幅 1/4、小角色 ≥ 1/12）、`postcheck.py` 的通过阈值——**都是在 hunyuan-image 上实测出来的**，同一套数字换模型不一定成立。
+
+- **默认就是它**：在 WorkBuddy 里直接用本技能，跑的就是 hunyuan-image，效果与本文示例一致；
+- **其它模型原则上也能用**：GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro 都能读这套提示词，出图不会报错，但风格、文字准确率、网点颗粒会有差异；
+- **换模型先校阈值**：跑一张 → `python3 scripts/postcheck.py a.png --track A` → 对照量测结果决定是否放宽某条硬底线，别直接沿用 hunyuan-image 的数字。
+
+### 积分消耗
+
+出图不是免费的，而且**按张计费、不看轮次优惠**：
+
+| 场景 | 估算 |
+|---|---|
+| 生产模式出 1 张 | 5–10 积分 |
+| 探索模式跑 6 张 | 30–60 积分 |
+| 一轮改进（看图 → 改提示词 → 重出 1 张） | 再 5–10 积分 |
+| 打磨 3 轮 × 每次 2 张 | 30–60 积分 |
+
+省积分的三个做法：
+
+1. **先定画幅**（第 2 节）——尺寸错了重出 = 双倍付费，这是最大的浪费源；
+2. **先 `preflight.py` 预检**——提示词里的色相词、面积百分比、元信息混入文案，都能在出图前被拦下；
+3. **一次说清修改点**——把几处问题攒成一轮改完，而不是一张图来回改五次。
+
+> 本技能出图前会主动报预计消耗；批量出图（≥5 张）会先跟你确认。多轮改进前先问自己：这张图值得几轮？
 
 ## 示例作品
 
@@ -129,6 +165,8 @@ pip install numpy pillow opencv-python-headless
 
 也可以输入 `/taxue-imagegen` 触发。每次会按生产模式默认只出 1 张；如果你想批量探索，明说「探索模式 N 张」。
 
+**改进也是出图**：说「再改一版」= 再出一张 = 再扣一次积分。出图前把修改点一次说清，比分五次微调省得多——详见 [积分消耗](#积分消耗)。
+
 ## 适合做什么
 
 - **海报**：活动、展览、城市漫游、概念海报、KV、专辑封面
@@ -152,10 +190,14 @@ pip install numpy pillow opencv-python-headless
 
 生图模型的精髓在艺术那一面，自带随机性与创造力。这是个**工程优先的技能**，所有禁令、硬底线、模板都是为了让模型稳定——但它特意没有做僵化的约束，也不追求复刻一个固定的效果。同一段提示词交给 GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro，出图的风格有时候会有较大不同。这是有意保留的创作空间——同一句话多跑几次，常能撞出不同的好图，挑一张最对的用。
 
-选模型的经验（个人建议）：
+**基准模型是 hunyuan-image**：本技能的全部硬底线与验收阈值都在它上面实测得到，用它效果与本文示例一致。
 
-- **主力创作**：GPT Image 2、Grok Imagine 2
-- **后备**：Nano Banana 2、Seedream 5.0 Pro
+其它模型原则上也能用（提示词本身是通用英文描述），但风格倾向与文字准确率会漂移；换模型请先跑一张 + `postcheck.py` 校阈值：
+
+- **可试**：GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro
+- **换模型后优先复核**：文字逐字正确率、留白/顶部空间、网点颗粒与专色表现
+
+> 换模型 = 换一次调参成本，也 = 多花几张的积分。没有明确诉求时，留在 hunyuan-image 上最省。
 
 ## 工程校验
 
@@ -171,14 +213,14 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 
 ## 集成与同类
 
-同属踏雪生图系列——四个都是 **WorkBuddy 专属 Skill**，先认门，再用对技能：
+同属踏雪生图系列，先认门，再用对技能。**注意绑定关系不同**：只有 taxue-imagegen 是 WorkBuddy 专属（跑在 WorkBuddy 运行时里）；其余三个交付的是提示词本身，不绑定任何平台、模型或 Agent，复制到哪都能用。
 
-| 技能 | 一句话 | 仓库 |
-|---|---|---|
-| **踏雪创意风格**（影像风格引擎） | 14 个家族、77 个变体：按风格出图、改提示词、从零写、记住偏好 | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
-| **踏雪生图**（元提示词库 + 出图工作流） | 三条赛道 + 四种工作流 + 机械填槽 + 一次验收 | **你在这里** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
-| **踏雪半调海报**（印刷质感引擎） | 11 种风格 + 1 个变体：一句话、一个主题或一张照片，做成印刷感封面 | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
-| **踏雪节气拍立得**（节气创作引擎） | 节气、节日、物候短句，推出有记忆点的海报、纸本档案与拍立得 | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
+| 技能 | 一句话 | 绑定 | 仓库 |
+|---|---|---|---|
+| **踏雪创意风格**（影像风格引擎） | 14 个家族、77 个变体：按风格出图、改提示词、从零写、记住偏好 | 通用（跨平台 / 跨模型） | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
+| **踏雪生图**（元提示词库 + 出图工作流） | 三条赛道 + 四种工作流 + 机械填槽 + 一次验收 | **WorkBuddy 专属** · 为 hunyuan-image 调优 | **你在这里** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
+| **踏雪半调海报**（印刷质感引擎） | 11 种风格 + 1 个变体：一句话、一个主题或一张照片，做成印刷感封面 | 通用（跨平台 / 跨模型） | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
+| **踏雪节气拍立得**（节气创作引擎） | 节气、节日、物候短句，推出有记忆点的海报、纸本档案与拍立得 | 通用（跨平台 / 跨模型） | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
 
 ## 更新记录
 

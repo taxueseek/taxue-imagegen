@@ -10,11 +10,17 @@
 
 # taxue-imagegen · Meta-Prompt Library
 
-> 🧩 **WorkBuddy-exclusive Skill** — this only works inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview): generation goes through WorkBuddy's ImageGen, slot filling and verification run via `scripts/*.py` called by the Agent, and the skill itself is installed into `~/.workbuddy/skills/` with `npx skills add`. Outside WorkBuddy the scripts still run standalone (preflight, measurement, watermark removal are plain CLIs), but the "one sentence → one deliverable image" loop does not hold.
+> 🧩 **WorkBuddy-exclusive Skill** — this only works inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview): generation goes through WorkBuddy's ImageGen, slot filling and verification run via `scripts/*.py` called by the Agent, and the skill itself is installed into `~/.workbuddy/skills/` with `npx skills add`. Its siblings — taxue-creative-style / taxue-halftone / taxue-solar-polaroid — are portable skills (no platform, model, or Agent lock-in); **this one is the only WorkBuddy-bound skill in the family**.
+>
+> 🎯 **Tuned for hunyuan-image** — every hard line, ratio, and verification threshold across the three tracks was measured on hunyuan-image, image by image. Other models work in principle, but text placement, halftone grain, and padding drift; when you switch models, re-run one image through `postcheck.py` and re-check the thresholds.
+>
+> ⚠️ **Credit cost — read this first** — one ImageGen render costs about **5–10 credits**, and every "look at the image → spot a problem → tweak the prompt → re-render" round is a **brand-new render billed at full price**. Light multi-round polishing adds up fast (3 rounds × 2 images ≈ 30–60 credits). Lock the aspect ratio first and preflight with `preflight.py` — those two steps save the most credits.
 
 **Three tracks, four workflows — turn a sentence, a theme, or a photo into a stable cover, group illustration, or photoreal packaging mockup.**
 
 [![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
+[![Model](https://img.shields.io/badge/TUNED%20FOR-hunyuan--image-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
+[![Credits](https://img.shields.io/badge/CREDITS-5--10%2Fimage-d73a49?style=flat-square&labelColor=333)](#credit-cost)
 [![Version](https://img.shields.io/badge/VERSION-1.9.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
 [![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
@@ -29,6 +35,7 @@
   <a href="#three-tracks">Three tracks</a> ·
   <a href="#four-workflows">Workflows</a> ·
   <a href="#how-to-use">How to use</a> ·
+  <a href="#credit-cost">Credit cost</a> ·
   <a href="#what-its-for">What it's for</a> ·
   <a href="#rules">Rules</a> ·
   <a href="#engineering-checks">Engineering</a> ·
@@ -49,15 +56,44 @@ Since v1.6 there's a **data feedback loop for template tuning**: every output is
 
 ### Why "WorkBuddy-exclusive"
 
-Three dependencies make it WorkBuddy-only:
+**It is the platform it's bound to, not a model.** Three dependencies make it WorkBuddy-only:
 
 | Dependency | What it means |
 |---|---|
-| **Generation** | Calls [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview)'s ImageGen (text-to-image / image-to-image). Models are switched inside the session — GPT Image 2, Grok Imagine 2, Nano Banana 2, Seedream 5.0 Pro. The skill owns prompts and verification, not model routing. |
+| **Generation** | Calls [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview)'s ImageGen (text-to-image / image-to-image). The skill owns prompts and verification, not model routing. |
 | **Skill loading** | `SKILL.md` frontmatter description + layered `references/` loading + the `/taxue-imagegen` slash command are all driven by WorkBuddy's skill mechanism. |
 | **Agent loop** | `fill_meta.py` fills slots → generate → `postcheck.py` verifies → `dewm_v10.py` strips the watermark. That chain needs an Agent running scripts and reading images across turns, not a one-shot prompt. |
 
+Put differently: the other three skills in the family ship **prompts** — copy them out and they run on any client, any model. This skill ships **a pipeline that lives inside WorkBuddy**; taking the prompt with you gets you one third of it.
+
 What works anywhere: `scripts/preflight.py`, `postcheck.py`, `dewm_v10.py`, and `explore.py` are standalone CLIs. Any environment with Python 3 + `numpy` / `pillow` / `opencv-python-headless` can run them — you just don't get the loop above.
+
+### Baseline model: hunyuan-image
+
+Every hard line across the three tracks — background hex, three-tier copy ratio, top padding, overlap area, countable constraints (largest subject ≤ 1/4 frame, smallest ≥ 1/12), and `postcheck.py`'s pass thresholds — **was measured on hunyuan-image**. Those same numbers are not guaranteed on another model.
+
+- **It's the default**: use this skill inside WorkBuddy and you're on hunyuan-image, matching every sample in this README;
+- **Other models work in principle**: GPT Image 2, Grok Imagine 2, Nano Banana 2, Seedream 5.0 Pro all read these prompts without error — but style, text accuracy, and halftone grain will differ;
+- **Re-check thresholds when you switch**: render one → `python3 scripts/postcheck.py a.png --track A` → compare the measurements before deciding to relax a hard line. Don't carry hunyuan-image's numbers over blindly.
+
+### Credit cost
+
+Rendering isn't free, and it is **billed per image — no discount for another round**:
+
+| Scenario | Estimate |
+|---|---|
+| Production mode, 1 image | 5–10 credits |
+| Exploration mode, 6 images | 30–60 credits |
+| One refinement round (look → tweak prompt → re-render 1) | +5–10 credits |
+| Polishing 3 rounds × 2 images each | 30–60 credits |
+
+Three ways to spend less:
+
+1. **Lock the aspect ratio first** (§2) — a wrong size means a re-render at double price; this is the biggest source of waste;
+2. **Preflight with `preflight.py`** — hue words on the paper, area percentages, meta text leaking into copy: all caught before you pay;
+3. **Batch your edits** — collect several fixes into one round instead of five back-and-forth tweaks on the same image.
+
+> The skill states the estimated cost before rendering, and confirms with you before batch runs (≥5 images). Before each refinement round ask yourself: how many rounds is this image worth?
 
 ## Examples
 
@@ -129,6 +165,8 @@ Then just say it **inside WorkBuddy**, e.g.:
 
 Or trigger with `/taxue-imagegen`. Production mode defaults to 1 image per request — if you want batch exploration, say "exploration mode, N images" explicitly.
 
+**A refinement is a render**: saying "one more version" = one more image = one more charge. State all your edits up front instead of five micro-tweaks — see [Credit cost](#credit-cost).
+
 ## What it's for
 
 - **Posters**: events, exhibitions, city walks, concept posters, KVs, album covers
@@ -152,10 +190,14 @@ Full rules plus 22 verified pitfall fixes across tracks: [`references/pitfalls.m
 
 The magic of image generation is the artistic side — randomness and creativity are baked in. This is an **engineering-first skill**: every prohibition, hard line, and template is there to make output stable — but it deliberately avoids rigid constraints and doesn't aim to reproduce a fixed look. The same prompt handed to GPT Image 2, Grok Imagine 2, Nano Banana 2, Seedream 5.0 Pro can produce noticeably different results. That creative headroom is intentional — run the same line a few times, pick the one that fits.
 
-Model suggestions (personal):
+**The baseline model is hunyuan-image**: every hard line and threshold here was measured on it — use it and you get the results shown in this README.
 
-- **Primary**: GPT Image 2, Grok Imagine 2
-- **Backup**: Nano Banana 2, Seedream 5.0 Pro
+Other models work in principle (the prompts are plain English descriptions), but style bias and text accuracy drift. If you switch, render one and re-check with `postcheck.py` first:
+
+- **Known to work**: GPT Image 2, Grok Imagine 2, Nano Banana 2, Seedream 5.0 Pro
+- **Re-verify first after switching**: verbatim text accuracy, padding / top space, halftone grain and spot-color rendering
+
+> Switching models costs another round of threshold tuning — and a few more images' worth of credits. With no specific need, staying on hunyuan-image is the cheapest path.
 
 ## Engineering checks
 
@@ -171,14 +213,14 @@ CI: [`.github/workflows/validate.yml`](./.github/workflows/validate.yml).
 
 ## Sibling skills
 
-Same family of image-generation skills — all four are **WorkBuddy-exclusive Skills** — pick the right one for the job:
+Same family of image-generation skills — pick the right one for the job. **Note the different bindings**: only taxue-imagegen is WorkBuddy-exclusive (it lives in the WorkBuddy runtime); the other three ship prompts with no platform, model, or Agent lock-in — copy them anywhere.
 
-| Skill | One-liner | Repo |
-|---|---|---|
-| **taxue-creative-style** (image-style engine) | 14 families, 77 variants: by-style generation, prompt rewriting, from-scratch, remember preferences | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
-| **taxue-imagegen** (meta-prompt library + workflow) | 3 tracks + 4 workflows + mechanical slot fill + one-shot verify | **You are here** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
-| **taxue-halftone** (print-feel engine) | 11 styles + 1 variant: turn a sentence, theme, or photo into a print-feel cover | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
-| **taxue-solar-polaroid** (solar-term engine) | Solar terms, festivals, phenology short lines → memorable posters, paper archives and polaroids | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
+| Skill | One-liner | Binding | Repo |
+|---|---|---|---|
+| **taxue-creative-style** (image-style engine) | 14 families, 77 variants: by-style generation, prompt rewriting, from-scratch, remember preferences | Portable (any platform / model) | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
+| **taxue-imagegen** (meta-prompt library + workflow) | 3 tracks + 4 workflows + mechanical slot fill + one-shot verify | **WorkBuddy-exclusive** · tuned for hunyuan-image | **You are here** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
+| **taxue-halftone** (print-feel engine) | 11 styles + 1 variant: turn a sentence, theme, or photo into a print-feel cover | Portable (any platform / model) | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
+| **taxue-solar-polaroid** (solar-term engine) | Solar terms, festivals, phenology short lines → memorable posters, paper archives and polaroids | Portable (any platform / model) | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
 
 ## Changelog
 
