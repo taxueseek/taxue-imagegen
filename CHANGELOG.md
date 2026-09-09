@@ -4,6 +4,66 @@ All notable changes to taxue-imagegen are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-09-08
+
+### Added
+- **Type D · Narrative Storyboard** — 9-frame sequential storytelling with a
+  dual consistency anchor (`STYLE LOCK` + `CHARACTER LOCK` reused verbatim in
+  every frame, since ImageGen has no reference-image channel). Ships
+  `references/storyboard.md` (positioning, mechanism, 9-frame shot design,
+  measured parameters) and `scripts/build_storyboard.py`, which builds both
+  cases (`--case cyber|ink`) from one shared `build()` — the previous two
+  scripts had byte-identical `main()` functions.
+- **`fill_meta.py C`** — Type C packaging mockups now assemble mechanically
+  instead of the LLM hand-copying a 17-slot template. `--list` shows the slots;
+  `--set` fills them; empty optional slots (e.g. the second spot colour) have
+  their leftover brackets stripped automatically.
+- **`scripts/test_regressions.py`** — 42 assertion-based tests, one per fixed
+  defect, wired into `run_tests.sh`. They assert behaviour (regex hits, exit
+  codes, path resolution), not "it ran without crashing".
+
+### Fixed
+- **`preflight.py` word-boundary bugs (both directions at once)** — hue words
+  were bare substrings, so `managed`/`staged`/`damaged` matched `aged`,
+  `screaming` matched `cream`, and `warmth` matched `warm`: all 9 Type D
+  prompts were falsely blocked. Meanwhile `NEGATION`'s bare `ban`/`no` matched
+  `banner`/`urban`, so genuine hue violations were silently waved through.
+  English terms now use `\b`; Chinese terms stay substring-based.
+- **`preflight.py` missed Chinese slot markers** — the leftover-slot rule only
+  understood `{}`, so Type C's 17 `【】` slots passed with `findings=[]`.
+  Both bracket styles are now detected.
+- **`postcheck.py` recorded unverified text as `pass`** — a run with no
+  `--text` logged `verdict=pass`, contradicting SKILL.md's "pass = metrics in
+  range **and** text verbatim-correct". Now a distinct `pending` verdict with
+  exit code 3.
+- **`postcheck.py` / `preflight.py` rejected tracks C and D** — `choices=["A","B"]`
+  meant the two newest tracks could not be verified at all. Both now accept
+  A/B/C/D, with type-appropriate thresholds (R-B is inapplicable to Type C's
+  grey studio base and exempted for Type D's narrative warm tones).
+- **`dewm_io.safe_target` could still overwrite the source** — the guard
+  compared path strings, so a case-variant `--out A.PNG` (same file as `a.png`
+  on case-insensitive APFS) and a hard link both bypassed it. Now uses
+  `os.path.samefile()` when both paths exist, falling back to `normcase`.
+- **`build_storyboard.py` wrote to `/tmp`** — output now lands in the script's
+  own directory, matching `build_storyboard_ink.py`.
+- **`1024x1792` mislabelled as 9:16** — it is 4:7 (0.5714 vs 0.5625, 0.9% off).
+  Corrected in both docs; exact 9:16 at width 1024 would be `1024x1820`. The
+  size was also missing from `preflight.py`'s tested-size table.
+- **`references/storyboard.md` claimed to be "Type C"** while SKILL.md assigns
+  C to packaging and D to storyboards; corrected to D.
+- **Stale counts** — `preflight.py` said "15 pits" while `pitfalls.md` had 22;
+  the SKILL.md index said "15+". Both now state 26 pits / 11 text-detectable
+  (50%), with the list of which.
+
+### Changed
+- **`runs.csv` can be skipped** — `postcheck.py --no-log` keeps test runs from
+  polluting the production log (this session's own verification had added 13
+  junk rows, now cleaned).
+- **`run_tests.sh` runs in both layouts** — full checks in the release repo,
+  release-asset checks skipped in the local skill dir, so the two can no longer
+  drift apart.
+- `.gitignore` now excludes generated `scripts/_prompts*/` and `scripts/logs/`.
+
 ## [1.9.1] — 2026-09-08
 
 ### Fixed
@@ -60,7 +120,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   batch edits). Badge + nav link + a note in "How to use".
 - **SKILL.md** — §0 grows from two pre-flight items to three (add "preflight
   first", which is free) and states that refinement rounds bill again.
-- **Track C · Photoreal Packaging Mockup** — studio-lit physical base +
+- **Type C · Photoreal Packaging Mockup** — studio-lit physical base +
   editorial monochrome ink layout + single-metaphor AM halftone graphic +
   giant stacked brand wordmark; Chinese meta-template with slots
   (`references/packaging-editorial.md`, three rounds, r3 4/4 text
@@ -70,13 +130,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   box), §3 hard rules (eight verified rules), §4 padding/density hints.
 
 ### Notes
-- Track C uses `1152x1536` (3:4) — width 1152 differs from Track A's default
+- Type C uses `1152x1536` (3:4) — width 1152 differs from Type A's default
   1024 (2:3). The width is intentional for a true 3:4 ratio.
-- Gallery samples for Track C: four packagings (coffee pouch /
+- Gallery samples for Type C: four packagings (coffee pouch /
   serum bottle + box / beverage can / rigid box) from the v1.9 r3 round
   where 4/4 images passed the verbatim-text check.
-- `SKILL.md` corrected from "two tracks" to "three tracks" in the front-matter
-  description and the §0 header — Track C shipped in v1.9 but both lines were
+- `SKILL.md` corrected from "two tracks" to "three types" in the front-matter
+  description and the §0 header — Type C shipped in v1.9 but both lines were
   never updated.
 
 ## [1.8.0] — 2026-09-07
@@ -138,7 +198,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.5.0] — 2026-09-07
 
 ### Added
-- `scripts/fill_meta.py` — mechanical slot fill for Track A. Reads
+- `scripts/fill_meta.py` — mechanical slot fill for Type A. Reads
   `references/poster-v5.md` §1 as single source of truth, performs
   verbatim replacement, derives `{N}` and the character list automatically,
   pre-validates punctuation, runs preflight before emitting. `--list`
@@ -161,7 +221,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.0.0] — 2026-09-01
 
 ### Added
-- Initial release. Two tracks (Track A vertical concept poster, Track B
+- Initial release. Two types (Type A vertical concept poster, Type B
   hand-drawn group illustration), five themes, mechanical slot fill,
   single-source templates, Explore mode in-script, watermark removal
   (rmwm + dewm v1).

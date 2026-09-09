@@ -1,6 +1,6 @@
 <p align="center">
 
-![踏雪生图元提示词库：三条赛道、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机](./assets/readme/hero.png)
+![踏雪生图元提示词库：三种类型、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机](./assets/readme/hero.png)
 
 </p>
 
@@ -12,18 +12,18 @@
 
 > 🧩 **WorkBuddy 专属 Skill** — 本技能只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑得通：出图走 WorkBuddy 的 ImageGen，填槽与验收由 Agent 调用 `scripts/*.py` 完成，技能本体经 `npx skills add` 装进 `~/.workbuddy/skills/`。同家族的 taxue-creative-style / taxue-halftone / taxue-solar-polaroid 是通用技能（不绑平台、不绑模型、不绑 Agent），**只有本技能绑定 WorkBuddy 运行时**。
 >
-> 🎯 **为 hunyuan-image 调优** — 三条赛道的提示词、硬底线与验收阈值，都是在本机 hunyuan-image 上一张张实测调出来的。其它模型原则上也能用，但文字排布、网点颗粒、留白这类表现会漂移，换模型时请重跑一张 + `postcheck.py` 校阈值。
+> 🎯 **为 hunyuan-image 调优** — 四种类型的提示词、硬底线与验收阈值，都是在本机 hunyuan-image 上一张张实测调出来的。其它模型原则上也能用，但文字排布、网点颗粒、留白这类表现会漂移，换模型时请重跑一张 + `postcheck.py` 校阈值。
 >
 > ⚠️ **积分消耗请悉知** — ImageGen 单张约 **5–10 积分**；而「看图 → 挑问题 → 调提示词 → 重出」的每一轮改进都是一次**全新出图**，同样计费。小幅多轮打磨成本上升很快（3 轮 × 2 张 ≈ 30–60 积分）。出图前先定画幅、先用 `preflight.py` 预检，是省积分最有效的两步。
 
-**三条赛道、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像或写实包装样机。**
+**四种类型、四种工作流——把一句话、一个主题或一张照片，做成一张稳定的封面、群像、包装样机或分镜。**
 
 [![WorkBuddy](https://img.shields.io/badge/WORKBUDDY-EXCLUSIVE-E37F2C?style=flat-square&labelColor=333)](https://www.workbuddy.cn/docs/workbuddy/Overview)
 [![Model](https://img.shields.io/badge/TUNED%20FOR-hunyuan--image-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Credits](https://img.shields.io/badge/CREDITS-5--10%2Fimage-d73a49?style=flat-square&labelColor=333)](#积分消耗)
-[![Version](https://img.shields.io/badge/VERSION-1.9.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.10.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 [![Skills](https://img.shields.io/badge/SKILLS-1-2ea44f?style=flat-square&labelColor=333)](./SKILL.md)
-[![Tracks](https://img.shields.io/badge/TRACKS-A·B·C-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
+[![Tracks](https://img.shields.io/badge/TRACKS-A·B·C·D-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
 [![Stars](https://img.shields.io/github/stars/taxueseek/taxue-imagegen?style=flat-square&label=STARS&color=e37f2c&labelColor=333)](https://github.com/taxueseek/taxue-imagegen/stargazers)
 [![Validate](https://github.com/taxueseek/taxue-imagegen/actions/workflows/validate.yml/badge.svg)](https://github.com/taxueseek/taxue-imagegen/actions/workflows/validate.yml)
 [![SKILL.md](https://img.shields.io/badge/Agent-SKILL.md-214f9b?style=flat-square&labelColor=333)](./SKILL.md)
@@ -32,7 +32,7 @@
 
 <p align="center">
   <a href="#示例作品">示例作品</a> ·
-  <a href="#三条赛道">三条赛道</a> ·
+  <a href="#三种类型">三种类型</a> ·
   <a href="#四种工作流">工作流</a> ·
   <a href="#怎么用">怎么用</a> ·
   <a href="#积分消耗">积分消耗</a> ·
@@ -48,7 +48,7 @@
 
 它做这件事的方式是三件套：
 
-- **三条赛道**——竖版概念海报（A）、手绘群像（B）、写实包装 Mockup（C），各自管一种图文关系；
+- **四种类型**——竖版概念海报（A）、手绘群像（B）、写实包装 Mockup（C）、叙事分镜（D），各自管一种图文关系；
 - **机械填槽**——提示词模板单一真源（`references/poster-v5.md` §一 等），LLM 不重抄模板，槽位逐字声明、词数自动推导、标点前置校验；
 - **一次验收**——`scripts/postcheck.py` 量测 + 底部文字带目检裁片 + 去水印 + 运行记账，验一张图从 3–4 次工具往返压到 1 次。
 
@@ -70,7 +70,7 @@ v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动�
 
 ### 调优基准模型是 hunyuan-image
 
-三条赛道的所有"硬底线"——背景色十六进制、文字三级比例、顶部留白、交叠面积、可数约束（最大角色 ≤ 画幅 1/4、小角色 ≥ 1/12）、`postcheck.py` 的通过阈值——**都是在 hunyuan-image 上实测出来的**，同一套数字换模型不一定成立。
+四种类型的所有"硬底线"——背景色十六进制、文字三级比例、顶部留白、交叠面积、可数约束（最大角色 ≤ 画幅 1/4、小角色 ≥ 1/12）、`postcheck.py` 的通过阈值——**都是在 hunyuan-image 上实测出来的**，同一套数字换模型不一定成立。
 
 - **默认就是它**：在 WorkBuddy 里直接用本技能，跑的就是 hunyuan-image，效果与本文示例一致；
 - **其它模型原则上也能用**：GPT Image 2、Grok Imagine 2、Nano Banana 2、Seedream 5.0 Pro 都能读这套提示词，出图不会报错，但风格、文字准确率、网点颗粒会有差异；
@@ -97,33 +97,34 @@ v1.6 起建立了模板调优的**数据反馈闭环**：每一张出图自动�
 
 ## 示例作品
 
-> 图片放在 `examples/` 目录，由本技能实际出图产出（已剥离 AI 合规水印，版权见 [ASSET-LICENSE.md](./ASSET-LICENSE.md)）。赛道 A 三张代表三种典型风格，赛道 B 两张代表两种密度等级，赛道 C 四张对应 `references/packaging-editorial.md` §二 槽位表的四种包装形态（咖啡袋 / 精华瓶 + 纸盒 / 饮料罐 / 天地盖硬盒），文字逐字全对（v1.9 r3 4/4 实测）。
+> 图片放在 `examples/` 目录，由本技能实际出图产出（已剥离 AI 合规水印，版权见 [ASSET-LICENSE.md](./ASSET-LICENSE.md)）。类型 A 三张代表三种典型风格，类型 B 两张代表两种密度等级，类型 C 四张对应 `references/packaging-editorial.md` §二 槽位表的四种包装形态（咖啡袋 / 精华瓶 + 纸盒 / 饮料罐 / 天地盖硬盒），文字逐字全对（v1.9 r3 4/4 实测）。
 
-| 踏雪（赛道 A · 水墨） | SHEER（赛道 A · 穿插型） | 字符点阵（赛道 A · 实验） |
+| 踏雪（类型 A · 水墨） | SHEER（类型 A · 穿插型） | 字符点阵（类型 A · 实验） |
 |:---:|:---:|:---:|
-| <img src="./examples/example-A-crane-ink.png" alt="赛道 A 水墨风鹤海报 WORKBUDDY" width="280"> | <img src="./examples/example-A-sheer-silk.png" alt="赛道 A 穿插型 SHEER 海报" width="280"> | <img src="./examples/example-A-char-matrix.png" alt="赛道 A 字符点阵艺术海报" width="280"> |
+| <img src="./examples/example-A-crane-ink.png" alt="类型 A 水墨风鹤海报 WORKBUDDY" width="280"> | <img src="./examples/example-A-sheer-silk.png" alt="类型 A 穿插型 SHEER 海报" width="280"> | <img src="./examples/example-A-char-matrix.png" alt="类型 A 字符点阵艺术海报" width="280"> |
 
-| 犬种图鉴（赛道 B · 满铺） | 旅行团（赛道 B · 满铺异形） |
+| 犬种图鉴（类型 B · 满铺） | 旅行团（类型 B · 满铺异形） |
 |:---:|:---:|
-| <img src="./examples/example-B-dog-lineup.png" alt="赛道 B 十四只犬种群像图鉴" width="280"> | <img src="./examples/example-B-travelers.png" alt="赛道 B 旅人、机器人、怪物混合群像" width="280"> |
+| <img src="./examples/example-B-dog-lineup.png" alt="类型 B 十四只犬种群像图鉴" width="280"> | <img src="./examples/example-B-travelers.png" alt="类型 B 旅人、机器人、怪物混合群像" width="280"> |
 
-| SLOW/ROAST（赛道 C · 咖啡袋） | PURE/ACTIVE（赛道 C · 精华瓶+纸盒） |
+| SLOW/ROAST（类型 C · 咖啡袋） | PURE/ACTIVE（类型 C · 精华瓶+纸盒） |
 |:---:|:---:|
-| <img src="./examples/example-C-01-coffee-pouch.png" alt="赛道 C 深焙棕 SLOW/ROAST 咖啡袋" width="280"> | <img src="./examples/example-C-02-glass-serum.png" alt="赛道 C 深靛蓝 PURE/ACTIVE 磨砂精华瓶 + 骨白纸盒" width="280"> |
+| <img src="./examples/example-C-01-coffee-pouch.png" alt="类型 C 深焙棕 SLOW/ROAST 咖啡袋" width="280"> | <img src="./examples/example-C-02-glass-serum.png" alt="类型 C 深靛蓝 PURE/ACTIVE 磨砂精华瓶 + 骨白纸盒" width="280"> |
 
-| BITTER/CITRUS（赛道 C · 饮料罐） | SILENT/HOURS（赛道 C · 天地盖硬盒） |
+| BITTER/CITRUS（类型 C · 饮料罐） | SILENT/HOURS（类型 C · 天地盖硬盒） |
 |:---:|:---:|
-| <img src="./examples/example-C-03-beverage-can.png" alt="赛道 C 墨黑+柠檬黄 BITTER/CITRUS 饮料罐" width="280"> | <img src="./examples/example-C-04-lidded-box.png" alt="赛道 C 炭灰亚麻压纹 SILENT/HOURS 天地盖硬盒" width="280"> |
+| <img src="./examples/example-C-03-beverage-can.png" alt="类型 C 墨黑+柠檬黄 BITTER/CITRUS 饮料罐" width="280"> | <img src="./examples/example-C-04-lidded-box.png" alt="类型 C 炭灰亚麻压纹 SILENT/HOURS 天地盖硬盒" width="280"> |
 
 > 九张样张均无「AI 生成 / WORKBUDDY」平台水印——原图出图后经 `scripts/dewm_v10.py` 或 `scripts/rmwm.py` 像素级修复；公开分享请保留 [ASSET-LICENSE.md](./ASSET-LICENSE.md) 中关于样张的版权说明。
 
-## 三条赛道
+## 三种类型
 
-| 赛道 | 你要什么 | 模板真源 | 入口 |
+| 类型 | 你要什么 | 模板真源 | 入口 |
 |---|---|---|---|
 | **A · 竖版概念海报** | 概念海报 / 展览 KV / 专辑封面 / 书籍封面 / 电影氛围海报 / 杂志专题 | [`references/poster-v5.md` §一](./references/poster-v5.md) | `scripts/fill_meta.py A` |
 | **B · 手绘群像** | 多角色插画 / 动物图鉴 / 角色群像 / 旅行团 / 手账式群像 | [`references/crowd-illustration.md`](./references/crowd-illustration.md) + [`crowd-themes.md`](./references/crowd-themes.md) | `scripts/fill_meta.py B --theme <主题>` |
-| **C · 写实包装 Mockup** | 棚拍包装样机（咖啡袋 / 精华瓶 / 饮料罐 / 天地盖硬盒） | [`references/packaging-editorial.md`](./references/packaging-editorial.md) | 模板直填（详见 [SKILL.md §赛道 C](./SKILL.md)） |
+| **C · 写实包装 Mockup** | 棚拍包装样机（咖啡袋 / 精华瓶 / 饮料罐 / 天地盖硬盒） | [`references/packaging-editorial.md`](./references/packaging-editorial.md) | `scripts/fill_meta.py C` |
+| **D · 叙事分镜** | 漫剧切片 / 绘本连环画 / 同角色多场景（N=6–9 帧） | [`references/storyboard.md`](./references/storyboard.md) | `scripts/build_storyboard.py --case cyber\|ink` |
 
 **拿不准**：画面主体是**一个**还是**一群**？一个 → A，一群 → B；想出产品包装 → C。
 
@@ -133,7 +134,7 @@ A 与 C 都用 `references/size-and-params.md` 的尺寸表（默认 `1024x1536`
 
 | 工作流 | 什么时候用 | 关键纪律 |
 |---|---|---|
-| **生产模式**（默认） | 赛道 + 模板已成熟，目标出成品 | 填槽 → 预检 → **只出 1 张** → 三档评审 → 成品或一次定向修复 |
+| **生产模式**（默认） | 类型 + 模板已成熟，目标出成品 | 填槽 → 预检 → **只出 1 张** → 三档评审 → 成品或一次定向修复 |
 | **探索模式** | 新主题 / 新风格 / 模板迭代 | `scripts/explore.py` 批量出稿 + settle 改名 + 验收 + 结论回写模板；单风格 2–5 张、多风格 5–9 张；详见 [`references/explore-mode.md`](./references/explore-mode.md) |
 | **去水印** | 出图后右下角带「AI 生成 / WORKBUDDY」 | 默认走 [`scripts/dewm_v10.py`](./scripts/dewm_v10.py)（v9 + 平底自适应融合，31ms）；疑难图走 [`scripts/pick_wm.py`](./scripts/pick_wm.py) 四版选优；输出全部落 `_clean/`，**绝不覆盖原图** |
 | **验收** | 出图后闭环 | [`scripts/postcheck.py`](./scripts/postcheck.py) 量测 + 文字带 2× 裁片 + dewm + runs.csv 记账，<0.5s |
@@ -158,9 +159,9 @@ pip install numpy pillow opencv-python-headless
 
 装好后**在 WorkBuddy 里**直接说，例如：
 
-- 「用赛道 A 做一张 2:3 概念海报，视觉风格浮世绘、主题无常、英文标题 WAITING」
-- 「赛道 B 来一张满铺犬种图鉴，14 只、主题用 `fill_meta.py B --theme 鸟` 改法」
-- 「赛道 C 来一张磨砂精华瓶的纸盒包装，色用深靛蓝，隐喻图形是一颗下落的水滴」
+- 「用类型 A 做一张 2:3 概念海报，视觉风格浮世绘、主题无常、英文标题 WAITING」
+- 「类型 B 来一张满铺犬种图鉴，14 只、主题用 `fill_meta.py B --theme 鸟` 改法」
+- 「类型 C 来一张磨砂精华瓶的纸盒包装，色用深靛蓝，隐喻图形是一颗下落的水滴」
 - 「把 explore_sample.csv 跑一遍探索模式，挑一张作主线」
 
 也可以输入 `/taxue-imagegen` 触发。每次会按生产模式默认只出 1 张；如果你想批量探索，明说「探索模式 N 张」。
@@ -171,10 +172,10 @@ pip install numpy pillow opencv-python-headless
 
 - **海报**：活动、展览、城市漫游、概念海报、KV、专辑封面
 - **平台封面**：小红书、公众号、播客、B 站、头像、超宽头图
-- **品牌物料**：明信片、邀请函、门票、菜单、包装贴纸（用赛道 C 出实物样机）
+- **品牌物料**：明信片、邀请函、门票、菜单、包装贴纸（用类型 C 出实物样机）
 - **书刊**：封面、扉页、章节页、zine 内页
 - **群像与图鉴**：人物图鉴、动物图鉴、旅行团合影、手账式多角色
-- **文字**：文学摘句、诗歌、个人宣言（用赛道 A 三组文字层级）
+- **文字**：文学摘句、诗歌、个人宣言（用类型 A 三组文字层级）
 
 ## 基本规矩
 
@@ -184,7 +185,7 @@ pip install numpy pillow opencv-python-headless
 4. **路径名先 `find` 再引用**——归档脚本会把连续下划线规范化成单个
 5. **元信息与内容物理分离**——权重标注（`= 100`）、比例说明不要和文案连写，否则约 50% 概率被原样画进画面
 
-完整规则、跨赛道 22 个已踩坑的修复写法见 [`references/pitfalls.md`](./references/pitfalls.md)。
+完整规则、跨类型 22 个已踩坑的修复写法见 [`references/pitfalls.md`](./references/pitfalls.md)。
 
 ## 随机性与创造力
 
@@ -218,20 +219,21 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 | 技能 | 一句话 | 绑定 | 仓库 |
 |---|---|---|---|
 | **踏雪创意风格**（影像风格引擎） | 14 个家族、77 个变体：按风格出图、改提示词、从零写、记住偏好 | 通用（跨平台 / 跨模型） | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
-| **踏雪生图**（元提示词库 + 出图工作流） | 三条赛道 + 四种工作流 + 机械填槽 + 一次验收 | **WorkBuddy 专属** · 为 hunyuan-image 调优 | **你在这里** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
+| **踏雪生图**（元提示词库 + 出图工作流） | 三种类型 + 四种工作流 + 机械填槽 + 一次验收 | **WorkBuddy 专属** · 为 hunyuan-image 调优 | **你在这里** · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
 | **踏雪半调海报**（印刷质感引擎） | 11 种风格 + 1 个变体：一句话、一个主题或一张照片，做成印刷感封面 | 通用（跨平台 / 跨模型） | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
 | **踏雪节气拍立得**（节气创作引擎） | 节气、节日、物候短句，推出有记忆点的海报、纸本档案与拍立得 | 通用（跨平台 / 跨模型） | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
 
 ## 更新记录
 
+- **v1.10.0**（2026-09-08）：新增类型 D「叙事分镜」——双 LOCK 一致性锚让同角色跨 9 帧稳定复现（`references/storyboard.md` + `build_storyboard.py --case cyber|ink`）；`fill_meta.py C` 让包装类型从「手抄 17 槽模板」变成机械填槽；修掉 4 类会直接误导出图的低级错误（preflight 词边界导致 9/9 假阻断、`【】`槽位漏检、postcheck 把「文字未核对」记成 pass、覆盖守卫被大小写/硬链接绕过）；新增 42 条断言式回归测试。默认去水印仍为 v10——实测 v11/v12 整体劣于 v10，降为暗区疑难图可选
 - **v1.9.1**（2026-09-08）：修复公开后 CI 一直红——三个基准脚本把本机绝对路径写死，runner 上 `import dewm` 直接失败（本机却因为静默读到了 `~/.workbuddy/skills/` 的同名模块而全绿）；三个脚本改用自身目录定位，测试底图改由 `TAXUE_BENCH_IMGS` 环境变量传入，仓库不再携带本机路径；`run_tests.sh` 新增隐私扫描，CI 改跑同一套测试
-- **v1.9.0**（2026-09-08）：新增赛道 C「写实包装 Mockup」——棚拍实物做底 + 编辑风单色专色版面 + 单一隐喻图形 AM 网点 + 巨型堆叠品牌字，中文元模板槽位化（`references/packaging-editorial.md`，三轮实测 r3 4/4 文字逐字全对）
+- **v1.9.0**（2026-09-08）：新增类型 C「写实包装 Mockup」——棚拍实物做底 + 编辑风单色专色版面 + 单一隐喻图形 AM 网点 + 巨型堆叠品牌字，中文元模板槽位化（`references/packaging-editorial.md`，三轮实测 r3 4/4 文字逐字全对）
 - **v1.8.0**（2026-09-07）：新增 `dewm_v10`——v9 + 平底自适应融合，修「平色底上肉眼可见的水印残影」（amp 判 CLEAN 但人眼仍有痕），平底图 RMS 5.98→1.43，纹理图逐位不动零回归；标准水印默认改走 `dewm_v10.py`
 - **v1.7.0**（2026-09-07）：探索模式（`explore.py` + CSV 驱动）；去水印默认改 `pick_wm` 三版选最优（v6/v7/v8 各有擅长，实测 18 张原 v6 漏清/留噪点 5 张占 28%）；新增 `audit_wm` 残留审计（无原图也能定位 DIRTY 张）
 - **v1.6.0**（2026-09-07）：出图后一次调用 `postcheck.py`——量测 + 文字带目检裁片 + dewm 反解去水印 + runs.csv 记账，验收路径从 3-4 次工具往返压到 1 次，建立模板调优的数据反馈闭环
 - **v1.5.0**（2026-09-07）：借鉴 `taxue-halftone` 流水线，`fill_meta.py` 机械填槽（LLM 不重抄模板、逐字声明自动推导）；提示词库分层加载；三档评审卡 + 出图配额 1 张
 - **v1.4.0**（2026-09-06）：尺寸实测——`size` 实测支持任意像素（不止官方 schema 的三示例），1024/1152/1536 三档长边精确输出
-- **v1.0.0**（2026-09-01）：首次发布。两条赛道、五个主题、机械填槽、模板单一真源。详见 [CHANGELOG.md](./CHANGELOG.md)
+- **v1.0.0**（2026-09-01）：首次发布。两条类型、五个主题、机械填槽、模板单一真源。详见 [CHANGELOG.md](./CHANGELOG.md)
 
 ## License
 

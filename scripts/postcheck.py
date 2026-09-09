@@ -12,8 +12,8 @@ v1.5.0 前验一张图要跑 measure、dewm、手动裁剪放大、人工记账 
   python3 postcheck.py a.png b.png --track B
 
 每张图自动：
-  1. 量测（复用 measure.metrics；--top 加测顶部留白，赛道 A 必用）
-  2. 导出底部文字带 2x 放大裁片 _textband.png（赛道 A，目检逐字用；替代手动裁剪）
+  1. 量测（复用 measure.metrics；--top 加测顶部留白，类型 A 必用）
+  2. 导出底部文字带 2x 放大裁片 _textband.png（类型 A，目检逐字用；替代手动裁剪）
   3. --dewm 时执行 alpha 反解去水印，输出 _dewm.png，并对去水印结果复测量
   4. 追加一行到 logs/runs.csv（时间/指标/文字判定/verdict），形成模板调优的数据反馈闭环
 
@@ -45,9 +45,16 @@ def load_sibling(name, attr):
 
 
 def measure_warnings(row, track, with_top):
-    """与 SKILL.md §4 阈值一致的自动判定。返回警告列表。"""
+    """与 SKILL.md §4 阈值一致的自动判定。返回警告列表。
+
+    各类型适用阈值不同（2026-09-08 补齐 C/D）：
+      A 海报   R-B / 顶部留白三项
+      B 群像   R-B / 白底 30–65% / 饱和度 ≤70
+      C 包装   灰底棚拍，R-B 阈值不适用（references/packaging-editorial.md §三 规则 8）
+      D 分镜   叙事性暖色豁免，R-B 阈值不适用（references/storyboard.md §五）
+    """
     warns = []
-    if row["R-B"] >= 3:
+    if track in ("A", "B") and row["R-B"] >= 3:
         warns.append(f"泛黄前兆 R-B={row['R-B']:.1f}")
     if track == "B":
         if not (30 <= row["white%"] <= 65):
@@ -65,7 +72,7 @@ def measure_warnings(row, track, with_top):
 
 
 def export_textband(path, im):
-    """底部文字带 2x 放大裁片（赛道 A 目检逐字用）。"""
+    """底部文字带 2x 放大裁片（类型 A 目检逐字用）。"""
     W, H = im.size
     y0 = int(H * 0.78)
     band = im.crop((0, y0, W, H))
@@ -75,7 +82,10 @@ def export_textband(path, im):
     return out
 
 
-def append_log(row, track, text, verdict, note):
+def append_log(row, track, text, verdict, note, no_log=False):
+    """追加一行运行记录。no_log=True 时跳过（跑测试/验证不污染生产记账）。"""
+    if no_log:
+        return
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     new = not os.path.exists(LOG_PATH)
     with open(LOG_PATH, "a", newline="", encoding="utf-8") as f:
@@ -98,8 +108,9 @@ def process(path, args):
     row["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     warns = measure_warnings(row, args.track, args.top and args.track == "A")
 
+    # 文字带裁片：A 有文字带必导；C 有品牌堆叠字，同样需要目检
     band = None
-    if args.track == "A":
+    if args.track in ("A", "C"):
         band = export_textband(path, im)
 
     dewm_out = None
@@ -117,7 +128,9 @@ def process(path, args):
         else:
             out_img, st = remove_watermark(img)
             if st.get("skipped"):
-                warns.append(f"dewm: {st['skipped']}（未改动）")
+                # 「不可解」是正确结论而非缺陷：近白底上水印不可见也不可解，
+                # 硬解只会引入噪声。记 info 不记 blocker（2026-09-08）。
+                print(f"  ℹ️ 去水印跳过: {st['skipped']}")
             else:
                 dewm_out = os.path.splitext(path)[0] + "_dewm.png"
                 dewm_tag = (f"k={st['k']:.2f} r2={st['r2']:.2f} "
@@ -127,9 +140,18 @@ def process(path, args):
                 if ok:
                     buf.tofile(dewm_out)
 
+    # verdict 三档（对齐 SKILL.md §3 评审卡）：
+    #   blocker    量测越界 / 文字判 bad  → 允许一次定向重生
+    #   pending    文字未核对（unverified）→ 不得计 pass，需逐字目检后回填
+    #   pass       指标在阈值内 且 文字逐字无误
     text = args.text or "unverified"
-    verdict = "blocker" if (warns or text == "bad") else "pass"
-    append_log(row, args.track, text, verdict, args.note or "")
+    if warns or text == "bad":
+        verdict = "blocker"
+    elif text == "unverified":
+        verdict = "pending"
+    else:
+        verdict = "pass"
+    append_log(row, args.track, text, verdict, args.note or "", no_log=args.no_log)
 
     name = row["file"]
     print(f"{name}  white%={row['white%']:.1f} paper%={row['paper%']:.1f} "
@@ -150,11 +172,14 @@ def process(path, args):
 def main():
     ap = argparse.ArgumentParser(description="出图后一次调用：量测+裁片+去水印+记账")
     ap.add_argument("images", nargs="+")
-    ap.add_argument("--track", choices=["A", "B"], default="A")
-    ap.add_argument("--top", action="store_true", help="加测顶部留白（赛道 A 必用）")
+    ap.add_argument("--track", choices=["A", "B", "C", "D"], default="A",
+                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，D=叙事分镜")
+    ap.add_argument("--top", action="store_true", help="加测顶部留白（类型 A 必用）")
     ap.add_argument("--dewm", action="store_true", help="顺带 alpha 反解去水印，输出 _dewm.png")
     ap.add_argument("--text", choices=["ok", "bad"], help="文案逐字目检结论（无视觉时先留空，明示用户核对）")
     ap.add_argument("--note", help="备注（模板版本、场景等）")
+    ap.add_argument("--no-log", action="store_true",
+                    help="不写 runs.csv（跑测试/验证时用，避免污染生产记账）")
     args = ap.parse_args()
 
     verdicts = []
@@ -169,7 +194,11 @@ def main():
     if any(v == "blocker" for v in verdicts):
         print("\n❌ blocker —— 按三档评审卡：才允许一次定向重生，只改一项")
         sys.exit(1)
-    print("\n✅ pass（文字未核对时 text=unverified，仍需逐字目检或明示用户核对）")
+    if any(v == "pending" for v in verdicts):
+        print("\n⏳ pending —— 指标在阈值内，但文字尚未逐字核对；"
+              "目检后回填 --text ok/bad，pending 不得当作通过")
+        sys.exit(3)
+    print("\n✅ pass（指标在阈值内 + 文字逐字无误）")
 
 
 if __name__ == "__main__":

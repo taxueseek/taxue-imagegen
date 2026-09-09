@@ -12,7 +12,7 @@ WorkBuddy 生图质量快检（配套 skill: taxue-imagegen）
 
 用法：
   python3 measure.py a.png b.png c.png
-  python3 measure.py --top poster.png          # 赛道 A 海报：加测顶部留白
+  python3 measure.py --top poster.png          # 类型 A 海报：加测顶部留白
   python3 measure.py --grid /tmp/grid.png *.png
   python3 measure.py --cols 3 --tw 320 --grid /tmp/g.png *.png
 
@@ -113,7 +113,7 @@ def build_grid(imgs, out, cols=3, tw=320, gap=10):
 def main():
     ap = argparse.ArgumentParser(description="WorkBuddy 生图质量快检")
     ap.add_argument("images", nargs="+", help="图片路径")
-    ap.add_argument("--top", action="store_true", help="加测顶部 25% 留白（赛道 A 海报用）")
+    ap.add_argument("--top", action="store_true", help="加测顶部 25% 留白（类型 A 海报用）")
     ap.add_argument("--grid", metavar="OUT", help="同时输出一张拼图")
     ap.add_argument("--cols", type=int, default=3, help="拼图列数，默认 3")
     ap.add_argument("--tw", type=int, default=320, help="拼图缩略宽度，默认 320")

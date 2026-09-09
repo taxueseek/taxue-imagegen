@@ -48,6 +48,12 @@ from dewm_io import imread_any, imwrite_any, safe_target, add_common_args, save_
 
 FLAT_STD_THR = 12.0      # 底子平整度阈值：紧邻带 std 低于此值判平底
 FUSE_A0, FUSE_A1 = 0.02, 0.12   # 融合权重斜坡：α≤A0 全信反解，α≥A1 全信 inpaint
+# 可解性门控（2026-09-08 新增）：
+# 水印是 wm = α·C + (1−α)·orig，可见度 ∝ α·(C − orig)。
+# 近白底上 C − orig ≈ 0 → 水印既不可见也不可解，硬解只会引入噪声。
+# S_med = median(α·(C − 局部中值背景)) 在字形核心区；低于 max(2.0, 3σ_noise) 即判 UNRESOLVABLE。
+UNRESOLVABLE_MIN = 2.0   # 可见度下限（灰度级）
+NOISE_SIGMA_K = 3.0      # 噪声倍数门（σ = 1.4826·MAD）
 # 参数扫描（t1 平底海报 / t2 满纹理图，2026-09-08）：
 #   A0,A1      t1 RMS   t2 RMS   t2 std
 #   0.05,0.40    2.88    45.90    47.35   ← 保守，残留仍偏多
@@ -75,6 +81,7 @@ def flatness(gray, x0, y0, x1, y1):
         if band.size >= h * w * 0.5:
             stds.append(float(band.std()))
     return max(stds) if stds else 0.0
+
 
 
 def _remove_at(img, a, x0, y0, C=255.0, fuse=False, force_k=None):
@@ -127,8 +134,31 @@ def _remove_at(img, a, x0, y0, C=255.0, fuse=False, force_k=None):
     return np.clip(out, 0, 255).astype(np.uint8), stats
 
 
+def visibility(gray, a, x0, y0, C=255.0):
+    """水印可见度 S_med 与噪声门。
+
+    可见度 = α·(C − 局部中值背景)：白水印压在近白底上时该值趋近 0，
+    此时 wm ≡ C ≡ orig，反解 (wm−αC)/(1−α) 只是把噪声放大 —— 越修越糟。
+    返回 (S_med, 阈值)；S_med < 阈值 即判 UNRESOLVABLE，应当 no-op。
+
+    判据取中值而非均值：字形笔画内的像素才有信息，均值会被大量 α≈0 的
+    背景像素稀释。
+    """
+    bh, bw = a.shape[:2]
+    patch = gray[y0:y0 + bh, x0:x0 + bw]
+    if patch.size == 0:
+        return 0.0, UNRESOLVABLE_MIN
+    bg = cv2.medianBlur(patch.astype(np.uint8), 31).astype(np.float32)
+    S = a * (C - bg)
+    core = a > 0.3
+    s_med = float(np.median(S[core])) if core.any() else 0.0
+    mad = float(np.median(np.abs(gray - cv2.medianBlur(gray.astype(np.uint8), 3))))
+    sigma = 1.4826 * mad
+    return s_med, max(UNRESOLVABLE_MIN, NOISE_SIGMA_K * sigma)
+
+
 def remove_watermark(img, C=255.0, align=True, fuse=True,
-                     flat_thr=FLAT_STD_THR, force_k=None):
+                     flat_thr=FLAT_STD_THR, force_k=None, guard=True):
     H, W = img.shape[:2]
     a, (bx, by) = V9.load_template(W, H)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -149,9 +179,21 @@ def remove_watermark(img, C=255.0, align=True, fuse=True,
     flat_std = flatness(gray, x, y, min(W, x + bw), min(H, y + bh))
     flat = flat_std < flat_thr
 
+    # 可解性门控：近白底上水印不可解，直接返回原图（不引入噪声）
+    vis, vis_thr = visibility(gray, a, x, y, C=C)
+    if guard and vis < vis_thr:
+        return img.copy(), {"skipped": f"水印不可解（可见度 {vis:.2f} < 阈值 {vis_thr:.2f}）",
+                            "vis": vis, "vis_thr": vis_thr, "align": aligned,
+                            "conf": float(conf), "offset": (x - bx, y - by),
+                            "scale": float(s), "flat": flat, "flat_std": flat_std,
+                            "k": 0.0, "r2": 0.0,
+                            "unstable_px": 0, "core_px": 0,
+                            "box": (x, y, x + bw, y + bh)}
+
     out, st = _remove_at(img, a, x, y, C=C, fuse=(fuse and flat), force_k=force_k)
     st.update({"align": aligned, "conf": float(conf), "offset": (x - bx, y - by),
-               "scale": float(s), "flat": flat, "flat_std": flat_std})
+               "scale": float(s), "flat": flat, "flat_std": flat_std,
+               "vis": vis, "vis_thr": vis_thr})
     return out, st
 
 
@@ -162,6 +204,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="只报诊断，不写文件")
     ap.add_argument("--no-align", action="store_true", help="关闭锚点对齐")
     ap.add_argument("--no-fuse", action="store_true", help="关闭平底融合（= v9 行为）")
+    ap.add_argument("--no-guard", action="store_true", help="关闭可解性门控（近白底也硬解）")
     ap.add_argument("--flat-thr", type=float, default=FLAT_STD_THR, help="平底判据阈值")
     ap.add_argument("--force-k", type=float, default=None)
     ap.add_argument("--color", type=float, default=255.0)
@@ -175,8 +218,12 @@ def main():
             continue
         out, st = remove_watermark(img, C=args.color, align=not args.no_align,
                                    fuse=not args.no_fuse, flat_thr=args.flat_thr,
-                                   force_k=args.force_k)
+                                   force_k=args.force_k, guard=not args.no_guard)
+
         name = os.path.basename(path)
+        if st.get("skipped"):
+            print(f"skip  {name}  {st['skipped']}")
+            continue
         tag = (f"align={'Y' if st['align'] else 'N'} off={st['offset']} "
                f"s={st['scale']:.2f} conf={st['conf']:.2f} "
                f"flat={'Y' if st['flat'] else 'N'}(std={st['flat_std']:.1f})")

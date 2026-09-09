@@ -2,10 +2,23 @@
 memory/
 user-preferences.md
 
+# Local-only archive — never published. Holds material kept off the public
+# repo; scripts/run_tests.sh verifies this directory is never tracked.
+_research/
+
 # Local test artifacts
 _backup_*
 test-prompts.md
 *.png.tmp
+
+# Generated prompt batches (build_storyboard output — regenerate on demand)
+scripts/_prompts/
+scripts/_prompts_ink/
+
+# Local run log (postcheck writes here; not a source artifact)
+scripts/logs/
+scripts/_calib_cache/
+scripts/wm_alpha_1024.npz.bak-*
 
 # OS
 .DS_Store

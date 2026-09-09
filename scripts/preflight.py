@@ -3,8 +3,11 @@
 """preflight — 出图前提示词静态检查（配套 skill: taxue-imagegen）。
 
 第一性原理：返工的最大成本发生在「出图之后才发现提示词里有已知错误」。
-15 个坑里有一半可以在提交前用文本规则拦住——把验收前置到提交前，
+过半的坑可以在提交前用文本规则拦住——把验收前置到提交前，
 单张直出才有可能。每条规则注释标明对应的坑号（见 references/pitfalls.md）。
+
+当前覆盖：pitfalls.md 共 26 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
+其余 11 个属像素级或工程级（去水印、并行撞名、路径名等），需靠 postcheck / audit_wm 等运行时手段。
 
 用法：
   python3 preflight.py prompt.txt          # 检查提示词文件
@@ -23,13 +26,20 @@ import sys
 
 # 坑 1：色相词是强色相指令。只查「正向使用」——同子句含否定词则放行
 # （硬底线里的「无米白、奶油、象牙」是负向清单，不能误报）。
+# 英文项一律 \b 词边界：否则 managed/staged/damaged 命中 aged、screaming 命中 cream、
+# swarm/warmth 命中 warm —— 2026-09-08 实测 9/9 分镜 prompt 被误判（09_ferry 的
+# "the only warmth" 被判色相违规）。中文项不加边界（子串即语义）。
 HUE_WORDS = [
-    r"warm", r"aged", r"vintage", r"faded", r"unbleached", r"sepia",
-    r"sun-bleached", r"cream", r"ivory", r"beige", r"kraft",
+    r"\bwarm\b", r"\baged\b", r"\bvintage\b", r"\bfaded\b", r"\bunbleached\b",
+    r"\bsepia\b", r"\bsun-bleached\b", r"\bcream\b", r"\bivory\b", r"\bbeige\b",
+    r"\bkraft\b",
     r"做旧", r"复古纸", r"牛皮纸", r"米白", r"奶油色", r"象牙白",
 ]
+# 否定词同样要边界：ban 会命中 banner/urban，no 会命中 nothing 之外的词首
+# （2026-09-08 实测：'banner with aged texture'、'urban vintage poster' 被误放行）。
 NEGATION = re.compile(
-    r"无|不|禁|避免|没有|不要|不得|证伪|示例|never|no\b|not\b|avoid|without|ban", re.I)
+    r"无|不|禁|避免|没有|不要|不得|证伪|示例|"
+    r"\bnever\b|\bno\b|\bnot\b|\bavoid\b|\bwithout\b|\bban\b|\bbanned\b|\bexclude\b", re.I)
 
 # 坑 8：权重/比例标注与文案连写（"TIDE = 100" 约 50% 被画进画面）
 META_ADJACENT = re.compile(r"[=＝]\s*\d|\d\s*[=＝]")
@@ -51,8 +61,10 @@ AREA_PCT = re.compile(
 DENSITY_WORD = re.compile(r"low[- ]to[- ]medium density|high density|generous white|密度(高|低|适中)", re.I)
 
 # 坑 11：竖排多词英文，末字母被复制到下一词首
-VERTICAL = re.compile(r"竖排|竖式|vertical", re.I)
-MULTI_WORD_EN = re.compile(r"\b[A-Z]{2,}\s+[A-Z]{2,}\b")
+VERTICAL = re.compile(r"竖排|竖式|\bvertical\b", re.I)
+# 排除 LOCK 标签（类型 D 的 STYLE LOCK / CHARACTER LOCK 是结构标签，不是竖排文案）：
+# 2026-09-08 实测 9/9 分镜 prompt 被误判为「竖排多词英文」。
+MULTI_WORD_EN = re.compile(r"\b[A-Z]{2,}\s+(?!LOCK\b)[A-Z]{2,}\b")
 
 # 坑 12①：中文文案要逐字声明（锁字数锁字序），缺了就有缺字风险
 CN_TEXT_DECL = re.compile(r"中文短句|中文文案|中文标题")
@@ -60,15 +72,25 @@ CN_VERBATIM = re.compile(r"恰好是|依次为|一字不多|逐字|exactly (?:th
 
 # 坑 14①：主标题穿插场景必须显式声明唯一性
 INTERLEAVE = re.compile(r"穿插|环绕|interleav|intertwin|woven", re.I)
-UNIQUENESS = re.compile(r"只出现一次|只出现一次|only once|不得再重复出现|出现一次")
+UNIQUENESS = re.compile(r"只出现一次|only once|不得再重复出现|出现一次")
 
 # 坑 9：纯白背景要带「不是浅灰」（加强写法，坑 9 修复，组合验证中）
 PURE_WHITE = re.compile(r"纯白|pure white", re.I)
 NOT_GRAY = re.compile(r"不是浅灰|not light gray|非浅灰|bright pure white|明亮纯白")
 
 # 尺寸：只放行已实测精确输出的画幅（references/size-and-params.md）
-TESTED_SIZES = {"1024x1024", "1024x1536", "1024x1280", "1152x1536", "1536x1024"}
+# 1024x1792 于 2026-09-08 分镜类型实测精确输出（实为 4:7，非精确 9:16）
+TESTED_SIZES = {"1024x1024", "1024x1536", "1024x1280", "1152x1536", "1536x1024",
+                "1024x1792"}
 SIZE_TOKEN = re.compile(r"\b(\d{3,4})\s*[x×]\s*(\d{3,4})\b")
+
+# 槽位：类型 A/B 用 {}，类型 C 模板用【】。两种都要能拦住未填槽位。
+# 2026-09-08 实测：C 模板 17 个【】槽位在 preflight 下静默放行（只认 {}）。
+SLOT_BRACE = re.compile(r"\{[^{}\n]{1,40}\}")
+SLOT_CN = re.compile(r"【[^】\n]{1,40}】")
+
+# 各类型适用的规则（避免用 A 的规则误判 D 的结构标签，反之亦然）
+TRACKS = ("A", "B", "C", "D")
 
 
 def clauses(text):
@@ -135,19 +157,19 @@ def check(text, track):
                     f"面积/密度/占比类指令对模型基本无效（例：{area_hits[0][:30]}）—— "
                     "换可数约束（数量下限 + 最大 ≤ 1/4 画幅 + 最小 ≥ 1/12）"))
 
-    # 坑 11 · 竖排多词英文
-    if VERTICAL.search(text) and MULTI_WORD_EN.search(text):
+    # 坑 11 · 竖排多词英文（类型 A/C 文案型；D 的 STYLE/CHARACTER LOCK 是结构标签，跳过）
+    if track in ("A", "C") and VERTICAL.search(text) and MULTI_WORD_EN.search(text):
         out.append(("BLOCK", "坑11",
                     "竖排 + 多词英文：末字母会被复制到下一词首 —— "
                     "逐字母声明总数或拆成独立竖列（修复写法见坑 11）"))
 
-    # 坑 12① · 中文文案逐字声明（赛道 A 含中文短句时必查）
+    # 坑 12① · 中文文案逐字声明（类型 A 含中文短句时必查）
     if track == "A" and CN_TEXT_DECL.search(text) and not CN_VERBATIM.search(text):
         out.append(("WARN", "坑12A",
                     "中文文案未逐字声明（锁字数锁字序）—— 缺字/错字高发，"
                     "写法：「必须恰好是这 N 个字：…（依次为：…）」"))
 
-    # 坑 14A · 主标题穿插唯一性（赛道 A 限定：赛道 B 的「穿插」指角色节奏，语义不同）
+    # 坑 14A · 主标题穿插唯一性（类型 A 限定：类型 B 的「穿插」指角色节奏，语义不同）
     if track == "A" and INTERLEAVE.search(text) and re.search(r"标题|title", text, re.I) \
             and not UNIQUENESS.search(text):
         out.append(("BLOCK", "坑14A",
@@ -155,7 +177,8 @@ def check(text, track):
                     "底部文字带同步改两行制"))
 
     # 坑 9 · 纯白背景加强写法（提出未单因素验证，提醒不阻断；满铺型无纯白条款，跳过）
-    if not manpu_decl and PURE_WHITE.search(text) and not NOT_GRAY.search(text):
+    if track in ("A", "B") and not manpu_decl and PURE_WHITE.search(text) \
+            and not NOT_GRAY.search(text):
         out.append(("WARN", "坑9",
                     "纯白背景未带「明亮纯白/不是浅灰」加强写法 —— "
                     "风格词可能把底色压成浅灰（坑 9，写法待单因素验证）"))
@@ -170,7 +193,7 @@ def check(text, track):
             break
 
     # 坑 16：中文 prompt 长度阈值（2026-09-07 实测 150 字过 / 430 字挂，精确阈值未定位）
-    if track == "A":
+    if track in ("A", "C"):
         cn_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
         if cn_chars > 430:
             out.append(("WARN", "坑16",
@@ -178,8 +201,9 @@ def check(text, track):
                         "遇 internal server error 先按坑 16 压缩"
                         "（历史完整模板亦有通过案例，阈值未定位）"))
 
-    # 残留槽位：模板 {槽位} 未填就提交（fill_meta --allow-partial 的半成品会在这里拦住）
-    leftover = re.findall(r"\{[^{}\n]{1,40}\}", text)
+    # 残留槽位：类型 A/B 用 {}，类型 C 用【】——两种都拦
+    # （2026-09-08 实测：C 模板 17 个【】槽位此前被静默放行）
+    leftover = SLOT_BRACE.findall(text) + SLOT_CN.findall(text)
     if leftover:
         out.append(("BLOCK", "槽位",
                     f"残留未填槽位 {len(leftover)} 个：{leftover[:5]} —— 用 fill_meta.py 填齐或人工定值"))
@@ -190,8 +214,8 @@ def check(text, track):
 def main():
     ap = argparse.ArgumentParser(description="出图前提示词静态检查（taxue-imagegen）")
     ap.add_argument("file", help="提示词文件路径，'-' 读 stdin")
-    ap.add_argument("--track", choices=["A", "B"], default="A",
-                    help="赛道 A=竖版概念海报（默认），B=手绘群像")
+    ap.add_argument("--track", choices=list(TRACKS), default="A",
+                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，D=叙事分镜")
     args = ap.parse_args()
 
     if args.file == "-":

@@ -7,18 +7,18 @@
 还可能漏段、漏禁令、漏硬底线。本脚本做外科手术式填槽：精确替换、标点前置校验、
 逐字声明与词数自动推导、残留槽位报告，组装完内嵌跑一遍 preflight。
 
-模板单一真源：赛道 A = references/poster-v5.md §一 首个代码块；
-赛道 B = references/crowd-themes.md 各主题节。脚本不内嵌模板文本，改模板只改 md。
+模板单一真源：类型 A = references/poster-v5.md §一 首个代码块；
+类型 B = references/crowd-themes.md 各主题节。脚本不内嵌模板文本，改模板只改 md。
 
 用法：
   python3 fill_meta.py A --list
-      列出赛道 A 全部槽位（必填 / 有默认 / 自动推导）
+      列出类型 A 全部槽位（必填 / 有默认 / 自动推导）
   python3 fill_meta.py A --set 视觉风格=浮世绘 --set 内容主题=无常 ... [--manpu] [--out FILE] [--allow-partial]
       填槽出稿；{N} 与 {逐字列出} 由 英文主标题/中文短句 自动推导；
       --manpu 按硬底线二选一（poster-v5.md §五）切换满铺型：删纯白背景与顶部留白条款
       填槽出稿；{N} 与 {逐字列出} 由 英文主标题/中文短句 自动推导
   python3 fill_meta.py B --list
-      列出赛道 B 全部主题
+      列出类型 B 全部主题
   python3 fill_meta.py B --theme 鸟
       输出该主题完整英文提示词（正向 + 负向）
 """
@@ -105,7 +105,7 @@ def do_track_a(args):
                 if default is None and raw not in auto_slots]
 
     if args.list:
-        print(f"赛道 A（v5.4）：{len(slots)} 个槽位，其中必填 {len(required)}，"
+        print(f"类型 A（v5.4）：{len(slots)} 个槽位，其中必填 {len(required)}，"
               f"自动推导 {len(auto_slots)}，有默认 {len(slots) - len(required) - len(auto_slots)}")
         for i, raw in enumerate(slots, 1):
             name, default = named[raw]
@@ -233,7 +233,7 @@ def load_track_b_themes():
 def do_track_b(args):
     themes, order = load_track_b_themes()
     if args.list:
-        print(f"赛道 B：{len(order)} 个主题（提示词必须英文，默认 1024x1536）")
+        print(f"类型 B：{len(order)} 个主题（提示词必须英文，默认 1024x1536）")
         for a in order:
             print(f"  {a}")
         return
@@ -255,20 +255,94 @@ def do_track_b(args):
         print(f"written: {args.out}", file=sys.stderr)
 
 
+def load_track_c_template():
+    """从 packaging-editorial.md §一 提取代码块（单一真源，槽位用【】）。"""
+    path = os.path.join(REF, "packaging-editorial.md")
+    text = open(path, encoding="utf-8").read()
+    m = re.search(r"^```\n(.*?)^```$", text, re.S | re.M)
+    if not m:
+        fail("packaging-editorial.md 中没有找到 §一 模板代码块")
+    return m.group(1).rstrip() + "\n"
+
+
+def do_track_c(args):
+    """类型 C 包装 Mockup：按槽位名替换【】，缺槽报错，组装完过 preflight。"""
+    template = load_track_c_template()
+    slots = re.findall(r"【([^】\n]+)】", template)
+
+    # 同名字槽位（如【色A】出现两次）一次赋值全部替换
+    unique = []
+    for s in slots:
+        if s not in unique:
+            unique.append(s)
+
+    if args.list:
+        print(f"类型 C（写实包装 Mockup）：{len(slots)} 处槽位，{len(unique)} 个不同名")
+        for i, s in enumerate(unique, 1):
+            n = slots.count(s)
+            print(f"  #{i} 【{s}】" + (f"  ×{n}" if n > 1 else ""))
+        return
+
+    sets = {}
+    for pair in args.set or []:
+        if "=" not in pair:
+            fail(f"--set 需要 KEY=VALUE：{pair}")
+        key, value = pair.split("=", 1)
+        sets[key.strip()] = value.strip()
+
+    # 文案类槽位禁引号（坑 5）；【+色B】是前缀槽位，允许留空
+    for key, value in sets.items():
+        if key in ("词1", "词2", "品类英文", "规格"):
+            hit = [c for c in FORBIDDEN_COPY if c in value]
+            if hit:
+                fail(f"--set {key}=… 含非法字符「{''.join(hit)}」：{value}（坑 5：文案禁引号）")
+
+    missing = [s for s in unique if s not in sets and not args.allow_partial]
+    if missing:
+        fail("缺槽位：" + "、".join(f"【{m}】" for m in missing)
+             + "（--list 查看全部；--allow-partial 允许半成品）")
+
+    result = template
+    for s in unique:
+        if s in sets:
+            result = result.replace(f"【{s}】", sets[s])
+
+    # 可留空槽位（单专色时 【+色B】 为空）→ 连同紧邻的空括号一并清掉，
+    # 避免出现「深焙棕（）。」这种残留（2026-09-08 实测发现）。
+    result = re.sub(r"（\s*）", "", result)
+    result = re.sub(r"\(\s*\)", "", result)
+
+    leftover = re.findall(r"【[^】\n]{1,40}】", result)
+    if leftover and not args.allow_partial:
+        fail(f"组装后仍有 {len(leftover)} 个残留槽位：{leftover[:5]}（--allow-partial 允许半成品）")
+
+    print(result)
+    blocked, lines = run_preflight(result, "C")
+    for line in lines:
+        print(line, file=sys.stderr)
+    if args.out:
+        open(args.out, "w", encoding="utf-8").write(result)
+        print(f"written: {args.out}", file=sys.stderr)
+    sys.exit(1 if blocked else 0)
+
+
 def main():
     ap = argparse.ArgumentParser(description="机械填槽组装出图提示词（taxue-imagegen）")
-    ap.add_argument("track", choices=["A", "B"], help="赛道 A=竖版概念海报，B=手绘群像")
+    ap.add_argument("track", choices=["A", "B", "C"],
+                    help="A=竖版概念海报，B=手绘群像，C=包装 Mockup")
     ap.add_argument("--set", action="append", help="KEY=VALUE，可多次")
-    ap.add_argument("--theme", help="赛道 B 主题名（--list 查看）")
-    ap.add_argument("--manpu", action="store_true", help="赛道 A 满铺型：删纯白背景与顶部留白硬底线（二选一）")
+    ap.add_argument("--theme", help="类型 B 主题名（--list 查看）")
+    ap.add_argument("--manpu", action="store_true", help="类型 A 满铺型：删纯白背景与顶部留白硬底线（二选一）")
     ap.add_argument("--list", action="store_true", help="列出槽位/主题")
     ap.add_argument("--out", help="写入文件")
     ap.add_argument("--allow-partial", action="store_true", help="允许缺槽/残留槽位（半成品）")
     args = ap.parse_args()
     if args.track == "A":
         do_track_a(args)
-    else:
+    elif args.track == "B":
         do_track_b(args)
+    else:
+        do_track_c(args)
 
 
 if __name__ == "__main__":

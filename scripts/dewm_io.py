@@ -63,6 +63,22 @@ def _real(p):
     return os.path.realpath(os.path.abspath(p))
 
 
+def _same_file(a, b):
+    """判断两个路径是否指向同一个文件（含大小写与硬链接变体）。
+
+    2026-09-08 实测两个绕过：① APFS 大小写不敏感，--out 传 `A.PNG` 而源是 `a.png`，
+    字符串比较判不等 → 原图被覆盖；② 硬链接 alias.png 与源同 inode，同样绕过。
+    因此存在时优先 samefile()（比 inode），否则退回 normcase 字符串比较。
+    """
+    ra, rb = _real(a), _real(b)
+    try:
+        if os.path.exists(ra) and os.path.exists(rb):
+            return os.path.samefile(ra, rb)
+    except OSError:
+        pass
+    return os.path.normcase(ra) == os.path.normcase(rb)
+
+
 def _redirect(src, why):
     """把输出重定向到源目录下的 _clean/ 子目录。"""
     d = os.path.dirname(os.path.abspath(src))
@@ -98,15 +114,15 @@ def safe_target(src, out, inplace=False):
     # --out 是具体文件
     if _is_image_path(out):
         out_abs = _real(out)
-        if out_abs == src_abs:
-            return _redirect(src, "--out 指向源文件本身，拒绝覆盖")
+        if _same_file(out_abs, src_abs):
+            return _redirect(src, "--out 指向源文件本身（含大小写/硬链接变体），拒绝覆盖")
         os.makedirs(os.path.dirname(out_abs), exist_ok=True)
         return out_abs
 
     # --out 是目录
     out_dir = _real(out)
     target = os.path.join(out_dir, os.path.basename(src))
-    if _real(target) == src_abs:
+    if _same_file(target, src_abs):
         return _redirect(src, "--out 目录就是源目录，同名会覆盖原图，拒绝覆盖")
     os.makedirs(out_dir, exist_ok=True)
     return target
