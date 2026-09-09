@@ -4,6 +4,62 @@ All notable changes to taxue-imagegen are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] — 2026-09-09
+
+### Fixed
+- **`measure.py` crashed on every invocation** — its `--help` text contained a
+  bare `%` (`"顶部 25% 留白"`), which argparse's `%`-formatting turned into
+  `ValueError: unsupported format character`. Because the crash happens inside
+  `main()`'s `add_argument`, *normal* runs failed too, on every Python version
+  (3.11/3.12/3.14 verified). The smoke test only imported the module, so CI
+  stayed green. `run_tests.sh` and `test_regressions.py` now run `--help` on
+  every user-facing CLI entry point.
+- **A regression test that could not fail** — `test_postcheck_verdict` asserted
+  `"C" in stdout` and `'"pending"' in source`, i.e. that the *strings* existed.
+  Removing `C`/`D` from `postcheck.py`'s `choices` still passed. Rewritten to
+  build real images and assert process exit codes (0 pass / 1 blocker /
+  3 pending), covering all three verdicts plus a genuinely yellow image.
+- **`preflight.py` hue-word list had a semantic gap** — the 2026-09-09 poster
+  run failed with `warm bone-white` (blocked), then passed with
+  `neutral near-white`; but `bone-white` alone was *not* in the list, so the
+  same failure could silently recur. Added the background-tinting equivalents
+  (`bone-white`/`off-white`/`eggshell`/`parchment`/`oatmeal`, `dusty`/`muddy`/
+  `dingy`/`grimy`/`murky`, 骨白/泛黄). Deliberately **not** added: `amber` /
+  `honey` / `golden` / `rose` — the measured record states these are concrete
+  colour names used for light and accents, and blocking them would break the
+  verified storyboard workflow.
+- **Stale/incorrect counts and claims** — `preflight.py` docstring said
+  "11 of 26 text-detectable (50%)" while listing 11 and leaving 15 (42%);
+  `postcheck.py` docstring still promised "re-measure the dewm result" and a
+  two-value verdict, contradicting the code since v1.10; SKILL.md called the
+  six call-discipline rules "four", cited "两个构建脚本" after they were merged
+  into one, and described a script verdict named 「可修」 that never existed.
+
+### Changed
+- **CHANGELOG.md and README badges catch up with the code** — the repo had
+  shipped v1.11.0 with no `[1.11.0]` entry, so Keep a Changelog was violated and
+  both READMEs advertised 1.10.0.
+
+## [1.11.0] — 2026-09-09
+
+### Added
+- **Cloud post-processing layer (optional, never on by default)** — SKILL.md §6
+  routes to the official built-in `buddy-image-processing` skill (enhance /
+  erase / restore / matting / beauty). The skill orchestrates, it does not copy
+  the official scripts. The Agent must propose first (what will change, the
+  cost, and that billing is unmeasured) and only call after the user agrees.
+- **Dual-routing for watermark removal** — images produced by this skill's
+  ImageGen go to the local `dewm` family (free, pixel-preserving); foreign
+  images, watermarks over complex artwork, and hard cases go to the official
+  cloud `erase` (which repaints around the target region — must be disclosed).
+- **Six call-discipline rules** absorbed from the official skill: report errors
+  truthfully, never resubmit when submission state is unknown, pass user
+  revisions through verbatim, re-run postcheck after any post-processing, treat
+  billing as charged until measured, and never enable optional cloud work
+  silently.
+- `references/pitfalls.md` "待解决" table gains three rows: cloud billing,
+  `erase` repaint scope, and post-processing's effect on postcheck metrics.
+
 ## [1.10.0] — 2026-09-08
 
 ### Added
@@ -38,8 +94,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   exit code 3.
 - **`postcheck.py` / `preflight.py` rejected tracks C and D** — `choices=["A","B"]`
   meant the two newest tracks could not be verified at all. Both now accept
-  A/B/C/D, with type-appropriate thresholds (R-B is inapplicable to Type C's
-  grey studio base and exempted for Type D's narrative warm tones).
+  A/B/C/D. Metric warnings are defined for A and B only: R-B is inapplicable to
+  Type C's grey studio base, and Type D's narrative warm tones are exempted by
+  `storyboard.md` §五. For C/D postcheck therefore runs measurement + text-band
+  crop + optional dewm and returns `pending`/`pass` on the text check alone —
+  **not** "type-appropriate thresholds".
 - **`dewm_io.safe_target` could still overwrite the source** — the guard
   compared path strings, so a case-variant `--out A.PNG` (same file as `a.png`
   on case-insensitive APFS) and a hard link both bypassed it. Now uses
@@ -53,7 +112,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   C to packaging and D to storyboards; corrected to D.
 - **Stale counts** — `preflight.py` said "15 pits" while `pitfalls.md` had 22;
   the SKILL.md index said "15+". Both now state 26 pits / 11 text-detectable
-  (50%), with the list of which.
+  (42%), with the list of which.
 
 ### Changed
 - **`runs.csv` can be skipped** — `postcheck.py --no-log` keeps test runs from
@@ -228,6 +287,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `references/pitfalls.md` — initial 12 verified pitfalls.
 - `references/poster-v5.md` §1 — v5.0 baseline template.
 
+[1.11.1]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.11.1
+[1.11.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.11.0
+[1.10.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.10.0
+[1.9.1]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.9.1
 [1.9.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.9.0
 [1.8.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.8.0
 [1.7.0]: https://github.com/taxueseek/taxue-imagegen/releases/tag/v1.7.0

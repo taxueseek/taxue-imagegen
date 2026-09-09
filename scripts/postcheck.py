@@ -14,11 +14,15 @@ v1.5.0 前验一张图要跑 measure、dewm、手动裁剪放大、人工记账 
 每张图自动：
   1. 量测（复用 measure.metrics；--top 加测顶部留白，类型 A 必用）
   2. 导出底部文字带 2x 放大裁片 _textband.png（类型 A，目检逐字用；替代手动裁剪）
-  3. --dewm 时执行 alpha 反解去水印，输出 _dewm.png，并对去水印结果复测量
+  3. --dewm 时执行 alpha 反解去水印，输出 _dewm.png（**不自动复测量去水印结果**：
+     指标只取自原图。后处理过的图必须重跑一次 postcheck 才算通过，见 SKILL.md §6 纪律 4）
   4. 追加一行到 logs/runs.csv（时间/指标/文字判定/verdict），形成模板调优的数据反馈闭环
 
-verdict 自动判定：量测警告或 --text bad → blocker；否则 pass。
-退出码：0=pass，1=blocker（与三档评审卡衔接：blocker 才允许一次定向重生）。
+verdict 三档自动判定（与 SKILL.md §3 评审卡一致）：
+  blocker  量测警告或 --text bad → 允许一次定向重生
+  pending  指标在阈值内但文字未核对（未传 --text）→ 不得计 pass
+  pass     指标在阈值内 且 文字逐字无误
+退出码：0=pass，1=blocker，3=pending。
 """
 
 import argparse
@@ -64,8 +68,11 @@ def measure_warnings(row, track, with_top):
     if with_top and track == "A":
         if row.get("top_R-B", 0) >= 3:
             warns.append(f"顶部留白发黄 top_R-B={row['top_R-B']:.1f}")
-        if row.get("top_noise", 0) >= 6:
-            warns.append(f"留白被画成实体 top_noise={row['top_noise']:.1f}")
+        # top_noise 不再作为 blocker（2026-09-09 实测修正）：
+        # 13/13 张真实海报 top_noise 全部 ≥29（阈值 6 全灭，连用户已验收的
+        # charming-girl-poster.png=50.1 也拦），纸纹/网点/网点化网点本身就把 std
+        # 顶上去 —— 阈值不具区分力，只会制造假 blocker（postcheck 判 blocker =
+        # 允许一次定向重生 = 再扣 5-10 积分）。降级为诊断值打印，不参与判定。
         if row.get("top_dev", 0) >= 12:
             warns.append(f"顶部被内容侵入 top_dev={row['top_dev']:.1f}")
     return warns
@@ -158,7 +165,10 @@ def process(path, args):
           f"R-B={row['R-B']:.1f} sat={row['sat']:.1f} base={row['base']:.0f}")
     if "top_noise" in row:
         print(f"  top: dev={row['top_dev']:.1f} noise={row['top_noise']:.1f} "
+              f"lf_std={row.get('top_lf_std', 0):.1f} dark%={row.get('top_dark%', 0):.1f} "
               f"R-B={row['top_R-B']:.1f} zone%={row['top_zone%']:.1f}")
+        print("       (top_noise 仅诊断：纸纹/网点会把 std 顶到 30+，不参与 blocker 判定；"
+              "判顶部是否真被画脏看 lf_std/dark% 并目检裁片)")
     if band:
         print(f"  目检裁片(2x): {band}")
     if dewm_out:

@@ -78,6 +78,22 @@ def metrics(path, with_top=False):
         row["top_B"] = b
         row["top_R-B"] = r - b
         row["top_noise"] = sum(st.stddev) / 3
+        # 2026-09-09 新增：把 top_noise 拆成「高频织纹」与「低频结构」两层。
+        # 实测 13/13 张真实海报 top_noise 全部 ≥29（阈值 6 全灭，包括用户已验收的
+        # 成品 charming-girl-poster.png = 50.1），阈值不具区分力；而纸纹/网点本身
+        # 就会把 std 顶上去。高斯模糊 σ=9 滤掉织纹后剩下的低频 std 才反映「有没有
+        # 大块实体入侵」，top_dark% 反映「内容覆盖了多少面积」。
+        try:
+            from PIL import ImageFilter
+            lowfreq = sum(ImageStat.Stat(top.filter(ImageFilter.GaussianBlur(9))).stddev) / 3
+        except Exception:  # noqa: BLE001
+            lowfreq = row["top_noise"]
+        row["top_lf_std"] = lowfreq
+        try:
+            tpx_all = list(top.get_flattened_data())  # type: ignore[attr-defined]
+        except AttributeError:
+            tpx_all = list(top.getdata())
+        row["top_dark%"] = sum(1 for p in tpx_all if min(p) < 150) / max(len(tpx_all), 1) * 100
         # 顶部是否真的「空」：与纸底基准的偏离量（绝对比值对纸底图无意义）
         row["top_dev"] = abs((r + g + b) / 3 - base)
         try:
@@ -113,7 +129,7 @@ def build_grid(imgs, out, cols=3, tw=320, gap=10):
 def main():
     ap = argparse.ArgumentParser(description="WorkBuddy 生图质量快检")
     ap.add_argument("images", nargs="+", help="图片路径")
-    ap.add_argument("--top", action="store_true", help="加测顶部 25% 留白（类型 A 海报用）")
+    ap.add_argument("--top", action="store_true", help="加测顶部 25%% 留白（类型 A 海报用）")
     ap.add_argument("--grid", metavar="OUT", help="同时输出一张拼图")
     ap.add_argument("--cols", type=int, default=3, help="拼图列数，默认 3")
     ap.add_argument("--tw", type=int, default=320, help="拼图缩略宽度，默认 320")
@@ -134,7 +150,8 @@ def main():
 
     cols = ["file", "size", "base", "white%", "paper%", "near%", "R-B", "sat"]
     if args.top:
-        cols += ["top_dev", "top_noise", "top_R-B", "top_white%", "top_zone%"]
+        cols += ["top_dev", "top_noise", "top_lf_std", "top_dark%", "top_R-B",
+                 "top_white%", "top_zone%"]
 
     name_w = min(max(len(r["file"]) for r in rows) + 3, 50)
     widths = {"file": max(name_w, 6)}
@@ -172,8 +189,13 @@ def main():
         if args.top:
             if row["top_R-B"] >= 3:
                 warn.append(f"⚠️  {tag} 顶部留白发黄 top_R-B={row['top_R-B']:.1f}")
-            if row["top_noise"] >= 6:
-                warn.append(f"⚠️  {tag} 留白被画成实体/纹理 top_noise={row['top_noise']:.1f}（阈值 <6）")
+            # top_noise 只作诊断（2026-09-09）：纸纹/网点使真实海报 std 恒 ≥29，
+            # 阈值 6 无区分力。真正判「顶部被画脏」看 lf_std（去织纹低频结构）与 dark%。
+            if row.get("top_dark%", 0) >= 40:
+                warn.append(
+                    f"⚠️  {tag} 顶部 40%+ 区域是实体内容 top_dark%={row['top_dark%']:.1f}"
+                    f"（lf_std={row.get('top_lf_std', 0):.1f}，阈值 <40）"
+                )
             if row["top_dev"] >= 12:
                 warn.append(
                     f"⚠️  {tag} 顶部被内容侵入 top_dev={row['top_dev']:.1f}"

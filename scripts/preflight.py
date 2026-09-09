@@ -3,11 +3,13 @@
 """preflight — 出图前提示词静态检查（配套 skill: taxue-imagegen）。
 
 第一性原理：返工的最大成本发生在「出图之后才发现提示词里有已知错误」。
-过半的坑可以在提交前用文本规则拦住——把验收前置到提交前，
+四成左右的坑可以在提交前用文本规则拦住——把验收前置到提交前，
 单张直出才有可能。每条规则注释标明对应的坑号（见 references/pitfalls.md）。
 
-当前覆盖：pitfalls.md 共 26 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
-其余 11 个属像素级或工程级（去水印、并行撞名、路径名等），需靠 postcheck / audit_wm 等运行时手段。
+当前覆盖：pitfalls.md 共 27 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
+其余 16 个属像素级或工程级（去水印、并行撞名、路径名等），需靠 postcheck / audit_wm 等运行时手段。
+11/27 ≈ 41%，即**近六成的坑在提交前拦不住**——preflight 是已知坑的防线，不是完备证明。
+新翻车样本要回写 HUE_WORDS 等规则表，否则同类风险会静默放行。
 
 用法：
   python3 preflight.py prompt.txt          # 检查提示词文件
@@ -29,11 +31,27 @@ import sys
 # 英文项一律 \b 词边界：否则 managed/staged/damaged 命中 aged、screaming 命中 cream、
 # swarm/warmth 命中 warm —— 2026-09-08 实测 9/9 分镜 prompt 被误判（09_ferry 的
 # "the only warmth" 被判色相违规）。中文项不加边界（子串即语义）。
+#
+# 2026-09-09 补：词表只收了「教科书色相词」，漏掉同义的**底色系复合词**。
+# 实测翻车样本 v1 写 `warm bone-white` 被拦，v2 把 warm 换成 `neutral near-white,
+# cool-grey balance` 就过了——但 `bone-white` 单独出现时原表直接放行（实测静默通过），
+# 与 ivory/cream 同类，风险等价。这里只补**底色/纸材色系**的等价词。
+#
+# 两条边界（2026-09-09 定，均由实测决定，不靠推测）：
+# ① 具体色名用于**光照/点缀**不算违规——实测记录写明「amber/honey/golden 是具体色名，
+#    不是抽象色相词」，暖调叙事照样成立（storyboard 09_ferry 的 golden hour）。
+#    所以 amber / honey / golden / rose / rosy 一律**不收**，收了就会拦住正常流程。
+# ② 场景描述词（dusty road / murky river）不收——它们说的是**画面内容**不是底色，
+#    且真实语料零出现，收了只会制造假阳性（实测："a dusty road at dawn" 会被判违规）。
+#    词表只对「底色被推离中性白」负责。
 HUE_WORDS = [
     r"\bwarm\b", r"\baged\b", r"\bvintage\b", r"\bfaded\b", r"\bunbleached\b",
     r"\bsepia\b", r"\bsun-bleached\b", r"\bcream\b", r"\bivory\b", r"\bbeige\b",
     r"\bkraft\b",
+    r"\bbone[- ]?white\b", r"\boff[- ]?white\b", r"\beggshell\b", r"\bparchment\b",
+    r"\boatmeal\b",
     r"做旧", r"复古纸", r"牛皮纸", r"米白", r"奶油色", r"象牙白",
+    r"骨白", r"泛黄",
 ]
 # 否定词同样要边界：ban 会命中 banner/urban，no 会命中 nothing 之外的词首
 # （2026-09-08 实测：'banner with aged texture'、'urban vintage poster' 被误放行）。

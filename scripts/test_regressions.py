@@ -15,6 +15,7 @@
   2. 每个 case 自带「为什么」，失败信息直接说明违反了什么。
   3. 不依赖网络、不依赖 WorkBuddy、不依赖仓库外的图片。
 """
+import glob
 import importlib.util
 import os
 import re
@@ -142,18 +143,77 @@ def test_overwrite_guard():
               os.path.realpath(t4) == os.path.realpath(src), "显式覆盖应放行")
 
 
-# ── postcheck verdict 三档 ───────────────────────────────────────
+# ── postcheck verdict 三档（行为断言，不查源码字符串） ────────────
 def test_postcheck_verdict():
-    r = subprocess.run([sys.executable, os.path.join(HERE, "postcheck.py"),
-                        "--help"], capture_output=True, text=True)
-    check("postcheck --track 支持 C/D",
-          all(f"'{x}'" in r.stdout or x in r.stdout for x in ("C", "D")),
-          "C/D 无法验收")
-    src = open(os.path.join(HERE, "postcheck.py"), encoding="utf-8").read()
-    check("postcheck 有 pending 档", '"pending"' in src,
-          "文字未核对会被记为 pass")
-    check("postcheck pending 退出码 3", "sys.exit(3)" in src,
-          "退出码未区分")
+    """2026-09-09 重写：原实现用 `'C' in stdout` / `'"pending"' in 源码`
+    断言，属于「查源码里有没有这个词」，把 C/D 从 choices 删掉照样 PASS
+    （实测确认）。改为构造图片跑真实进程，断言退出码。"""
+    from PIL import Image
+    pc = os.path.join(HERE, "postcheck.py")
+
+    def run(*extra, img=None, track="A"):
+        with tempfile.TemporaryDirectory() as d:
+            if img is None:
+                img = os.path.join(d, "white.png")
+                Image.new("RGB", (1024, 1536), (252, 252, 252)).save(img)
+            r = subprocess.run(
+                [sys.executable, pc, img, "--track", track, "--no-log", *extra],
+                capture_output=True, text=True)
+            return r
+
+    # 近白底 + 文字 ok → pass（rc 0）
+    r = run("--text", "ok")
+    check("postcheck 近白底+ok → pass(rc0)", r.returncode == 0,
+          f"rc={r.returncode} {r.stdout[-120:]}")
+
+    # 不传 --text → pending（rc 3），不得记成 pass
+    r = run()
+    check("postcheck 无 --text → pending(rc3)", r.returncode == 3,
+          f"rc={r.returncode} 未核对文字却记了 pass")
+
+    # --text bad → blocker（rc 1）
+    r = run("--text", "bad")
+    check("postcheck --text bad → blocker(rc1)", r.returncode == 1,
+          f"rc={r.returncode}")
+
+    # 泛黄图 → blocker（R-B 越界）
+    with tempfile.TemporaryDirectory() as d:
+        img = os.path.join(d, "yellow.png")
+        Image.new("RGB", (1024, 1536), (254, 252, 245)).save(img)
+        r = run("--text", "ok", img=img)
+        check("postcheck 泛黄图 → blocker(rc1)", r.returncode == 1,
+              f"rc={r.returncode} 泛黄未拦")
+
+    # C/D 必须被 argparse 接受（rc=2 才是「参数不支持」）
+    for t in ("C", "D"):
+        r = run("--text", "ok", track=t)
+        check(f"postcheck --track {t} 可用", r.returncode in (0, 1, 3),
+              f"rc={r.returncode} 类型 {t} 无法验收")
+
+
+# ── 面向用户的 CLI 必须 --help 可用（catch argparse 崩溃类缺陷） ────
+CLI_ENTRYPOINTS = [
+    "measure.py", "postcheck.py", "preflight.py", "fill_meta.py",
+    "dewm_v10.py", "pick_wm.py", "audit_wm.py", "explore.py",
+    "build_storyboard.py", "rmwm_light.py",
+]
+
+
+def test_cli_help():
+    """2026-09-09 新增：measure.py 的 help 串含裸 `%`（"顶部 25% 留白"），
+    argparse 走 %-格式化时抛 ValueError —— 任何 Python 版本、连正常出图路径
+    一起崩（main() 里 add_argument 就炸）。原冒烟测试只 import 模块，
+    抓不到这类「CLI 根本起不来」。这里只测面向用户的入口；
+    基准/诊断脚本（bench_*/probe_k_bias/metric_flat）按设计要传图或环境变量，
+    `--help` 不是它们的契约，故排除。"""
+    for base in CLI_ENTRYPOINTS:
+        f = os.path.join(HERE, base)
+        if not os.path.exists(f):
+            continue
+        r = subprocess.run([sys.executable, f, "--help"],
+                           capture_output=True, text=True, timeout=30)
+        check(f"--help 可用：{base}", r.returncode == 0,
+              f"rc={r.returncode} {(r.stderr or '').strip()[-140:]}")
 
 
 # ── 类型编号与文档数字一致性 ─────────────────────────────────────
@@ -176,6 +236,77 @@ def test_doc_consistency():
     n = len(re.findall(r"^## 坑 ?\d+", pitfalls, re.M))
     check(f"pitfalls 坑数({n})与 SKILL.md 声明一致",
           f"{n} 个坑" in skill, f"SKILL.md 未同步为 {n} 个坑")
+
+
+# ── 坑 27：top_noise 不得再当 blocker（纸纹假阳性） ──────────────
+def test_top_noise_not_blocker():
+    """2026-09-09 实测：13/13 张真实海报 top_noise ≥29（含已验收成品 50.1），
+    阈值 6 无区分力，却挂在 blocker 上（= 允许一次定向重生 = 再扣 5-10 积分）。
+    构造「中性底 + 细密织纹」的图：std 高但颜色中性、顶部未被实体侵入，
+    必须不被 top_noise 单独判 blocker。"""
+    from PIL import Image
+    import random
+    random.seed(0)
+    W, H = 1024, 1536
+    im = Image.new("RGB", (W, H), (250, 250, 250))
+    px = im.load()
+    for y in range(H):
+        for x in range(0, W, 2):
+            v = 250 + random.choice((-14, -7, 0, 7, 14))
+            px[x, y] = (v, v, v)
+    with tempfile.TemporaryDirectory() as d:
+        img = os.path.join(d, "textured.png")
+        im.save(img)
+        r = subprocess.run(
+            [sys.executable, os.path.join(HERE, "postcheck.py"), img,
+             "--track", "A", "--top", "--text", "ok", "--no-log"],
+            capture_output=True, text=True)
+        check("坑27 中性织纹底不被 top_noise 判 blocker",
+              "top_noise" not in r.stdout or "留白被画成实体" not in r.stdout,
+              f"仍按 top_noise 判 blocker：{r.stdout[-200:]}")
+
+    # 源码层护栏：阈值不得再回到 blocker 分支
+    src = open(os.path.join(HERE, "postcheck.py"), encoding="utf-8").read()
+    body = src.split("def measure_warnings", 1)[1].split("def export_textband", 1)[0]
+    check("坑27 postcheck 不再用 top_noise>=6 判 blocker",
+          "top_noise" not in body or ">=" not in body.split("top_noise")[1][:40],
+          "top_noise 阈值又回到 blocker 分支")
+
+
+# ── 版本号三方一致（SKILL front-matter / CHANGELOG / README 徽章） ──
+def test_version_consistency():
+    """2026-09-09 新增：仓库实际以 v1.11.0 发布，但 CHANGELOG 没有 1.11 条目、
+    两个 README 徽章还停在 1.10.0 —— 声明与实现三方打架，且违反仓库自己声明的
+    Keep a Changelog。这里把三者钉在一起。"""
+    skill = open(os.path.join(ROOT, "SKILL.md"), encoding="utf-8").read()
+    m = re.search(r"^version:\s*([0-9.]+)", skill, re.M)
+    check("SKILL.md front-matter 有 version", bool(m), "缺 version 字段")
+    if not m:
+        return
+    ver = m.group(1)
+    major_minor = ".".join(ver.split(".")[:2])
+
+    cl_path = os.path.join(ROOT, "CHANGELOG.md")
+    if not os.path.exists(cl_path):
+        # 本地 skill 目录（仅 SKILL.md + references + scripts）没有发布资产，
+        # 与 run_tests.sh 的 IS_REPO 判定保持一致：跳过而非失败。
+        check("CHANGELOG 版本一致（本地 skill 目录无 CHANGELOG，跳过）", True, "")
+        return
+    cl = open(cl_path, encoding="utf-8").read()
+    heads = re.findall(r"^## \[([0-9.]+)\]", cl, re.M)
+    check(f"CHANGELOG 含当前版本 [{ver}] 或 [{major_minor}]",
+          ver in heads or major_minor in heads,
+          f"SKILL={ver}，CHANGELOG 最新={heads[:3]}")
+
+    for name in ("README.md", "README.en.md"):
+        p = os.path.join(ROOT, name)
+        if not os.path.exists(p):
+            continue
+        txt = open(p, encoding="utf-8").read()
+        bm = re.search(r"badge/VERSION-([0-9.]+)-", txt)
+        check(f"{name} 版本徽章与 SKILL 一致",
+              bm is not None and bm.group(1) in (ver, major_minor),
+              f"徽章={bm.group(1) if bm else '缺失'}，SKILL={ver}")
 
 
 # ── 隐私：无本机绝对路径 ─────────────────────────────────────────
@@ -270,9 +401,12 @@ def main():
     print("== taxue-imagegen regression tests ==")
     for fn in (test_preflight_word_boundary, test_preflight_slot_detection,
                test_preflight_tracks_and_sizes, test_overwrite_guard,
-               test_postcheck_verdict, test_fill_meta_track_c,
+               test_postcheck_verdict, test_cli_help,
+               test_fill_meta_track_c,
                test_solvability_guard,
-               test_doc_consistency, test_no_machine_paths):
+               test_doc_consistency, test_version_consistency,
+               test_top_noise_not_blocker,
+               test_no_machine_paths):
         print(f"\n[{fn.__name__}]")
         try:
             fn()

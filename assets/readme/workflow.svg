@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">从填槽到过关成图</title>
+  <desc id="desc">先选定类型，再由脚本填槽，出一张后量测去水印，过关才交。</desc>
+  <rect width="1200" height="300" rx="22" fill="#F4EEE4"/>
+  <text x="48" y="40" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B8174" letter-spacing="2.5">HOW IT WORKS</text>
+  <text x="48" y="72" font-family="Songti SC, STSong, Georgia, serif" font-size="26" fill="#2C2C2C">从填槽到过关成图</text>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, sans-serif">
+    <g transform="translate(48 100)">
+      <rect width="240" height="108" rx="10" fill="#FAF6EE" stroke="#D4CBB8"/>
+      <rect width="4" height="108" fill="#2C2C2C"/>
+      <text x="20" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B8174">01</text>
+      <text x="20" y="64" font-family="Songti SC, STSong, Georgia, serif" font-size="22" fill="#2C2C2C">选定类型</text>
+      <text x="20" y="88" font-size="14" fill="#6B645C">海报、群像、包装、分镜</text>
+    </g>
+    <g transform="translate(336 100)">
+      <rect width="240" height="108" rx="10" fill="#FAF6EE" stroke="#D4CBB8"/>
+      <rect width="4" height="108" fill="#2C2C2C"/>
+      <text x="20" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B8174">02</text>
+      <text x="20" y="64" font-family="Songti SC, STSong, Georgia, serif" font-size="22" fill="#2C2C2C">机械填槽</text>
+      <text x="20" y="88" font-size="14" fill="#6B645C">脚本组装，不重抄模板</text>
+    </g>
+    <g transform="translate(624 100)">
+      <rect width="240" height="108" rx="10" fill="#FAF6EE" stroke="#D4CBB8"/>
+      <rect width="4" height="108" fill="#2C2C2C"/>
+      <text x="20" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B8174">03</text>
+      <text x="20" y="64" font-family="Songti SC, STSong, Georgia, serif" font-size="22" fill="#2C2C2C">出图验收</text>
+      <text x="20" y="88" font-size="14" fill="#6B645C">预检 → 只出 1 张 → 量测</text>
+    </g>
+    <g transform="translate(912 100)">
+      <rect width="240" height="108" rx="10" fill="#FAF6EE" stroke="#D4CBB8"/>
+      <rect width="4" height="108" fill="#C3272B"/>
+      <text x="20" y="34" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B8174">04</text>
+      <text x="20" y="64" font-family="Songti SC, STSong, Georgia, serif" font-size="22" fill="#2C2C2C">过关才交</text>
+      <text x="20" y="88" font-size="14" fill="#6B645C">blocker 才允许改一项</text>
+    </g>
+  </g>
+  <g fill="#C4B8A8" font-size="20" font-family="ui-monospace, Menlo, monospace">
+    <text x="300" y="162">→</text>
+    <text x="588" y="162">→</text>
+    <text x="876" y="162">→</text>
+  </g>
+  <g transform="translate(48 230)">
+    <rect width="1104" height="44" rx="10" fill="#FAF6EE" stroke="#D4CBB8"/>
+    <text x="24" y="28" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="15" fill="#3A3530">只在 WorkBuddy 里跑通。硬底线在 hunyuan-image 上实测；换模型先校阈值。</text>
+  </g>
+</svg>
