@@ -45,7 +45,7 @@ def load_sibling(name, attr):
 
 
 def measure_warnings(row, track, with_top):
-    """与 SKILL.md §4 阈值一致的自动判定。返回警告列表。
+    """与 SKILL.md §5 阈值一致的自动判定。返回警告列表。
 
     各类型适用阈值不同（2026-09-08 补齐 C/D）：
       A 海报   R-B / 顶部留白三项
