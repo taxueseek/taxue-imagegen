@@ -16,7 +16,7 @@
 
 Four types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, or storyboard.
 
-[![Version](https://img.shields.io/badge/VERSION-1.20.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.20.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 Runs only inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview). Generation goes through its ImageGen; slot fill and verification are scripts. The other three skills in the family ship prompts you can copy anywhere; this one ships a pipeline that lives in WorkBuddy.
 

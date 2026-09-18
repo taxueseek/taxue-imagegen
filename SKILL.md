@@ -1,6 +1,6 @@
 ---
 name: taxue-imagegen
-version: 1.20.0
+version: 1.20.1
 updated: 2026-09-18
 agent_created: true
 description: >-
@@ -135,14 +135,17 @@ description: >-
 | 类型 A 满铺/穿插变体、改硬底线 | `poster-v5.md` §一/§一·乙/§五 | 版本历史（在 history 文件） |
 | 类型 B 快速出图 | 本文件 + fill_meta 输出 + postcheck 输出 | crowd-illustration.md、crowd-themes.md、pitfalls.md |
 | 类型 B 自定义主题 | `crowd-illustration.md` §一 元提示词 | 主题库整读 |
+| 类型 B 主题五（高密度百相图） | `crowd-100-faces-prompt-v2.md`（修复版）；`crowd-100-faces-prompt-v1.md` 只在追溯两版差异时读 | 不做百相图时两个都不读 |
+| 探索模式（多风格扫描 / 单风格打磨） | `explore-mode.md` | — |
 | 类型 C 快速出图 | 本文件 + `packaging-editorial.md` §一 模板 + §二 槽位表 | §三 只在翻车/新形态时读 |
 | 类型 D 快速出图 | 本文件 + `storyboard.md` §三 模板 + §四 镜头设计法 | §一/§二 定位与机制只在首次建 LOCK 时读 |
 | 类型 E 快速出图 | 本文件 + fill_meta E 输出 + postcheck 输出 | `multigrid-layout.md` 只在翻车/改模板时读 |
-| 查某个坑的修复写法 | `pitfalls.md` 对应小节 | 其余坑节 |
+| 查某个坑的修复写法 | `pitfalls.md` 对应小节（先按症状表定位，再 `grep -n "^## 坑 "` 取行号只读那一节） | 其余坑节（全文 104 KB，禁止整读） |
 | 选画幅/参数细节 | 本文件 §2 不够时读 `size-and-params.md` | — |
 | 在豆包/即梦里跑本技能 | `references/jimeng-env.md` | — |
 | 要调用云端后处理（erase/enhance/restore/matting/beauty） | `references/cloud-postprocess.md` | — |
 | 追溯模板为什么长这样 / 复盘 runs.csv 调模板 | `poster-v5-history.md` / `countable-constraint-test.md` / `scripts/logs/runs.csv` | — |
+| 追溯某个版本改了什么 | `CHANGELOG.md` 对应版本节 | **出图不读**——全文 34 KB，只在需要版本史时按版本节读 |
 
 ---
 
@@ -156,10 +159,14 @@ description: >-
 一次调用（替代 measure/dewm/裁剪/记账的 3–4 次往返）：
 
 ```bash
-PY=${PY:-python3}   # 换成你的解释器（WorkBuddy 内置：~/.workbuddy/binaries/python/envs/default/bin/python）
-$PY ~/.workbuddy/skills/taxue-imagegen/scripts/postcheck.py a.png --track A --top --text ok
-$PY .../postcheck.py a.png --track E --expect-cells 9 --text ok   # 类型 E 校格数
-$PY .../measure.py --grid /tmp/grid.png *.png                     # 单独出对比拼图
+# 本技能目录：WorkBuddy 下默认如上行所示；**换宿主/换机先确认**（§7 硬规则 4）
+# ——别的宿主会把本技能装在自己的 skills 目录下，照抄绝对路径会 404
+SKILL=~/.workbuddy/skills/taxue-imagegen
+PY=${PY:-python3}   # 换成你的解释器（WorkBuddy 内置解释器带齐 numpy/PIL/cv2）
+
+$PY "$SKILL/scripts/postcheck.py" a.png --track A --top --text ok
+$PY "$SKILL/scripts/postcheck.py" a.png --track E --expect-cells 9 --text ok   # 类型 E 校格数
+$PY "$SKILL/scripts/measure.py" --grid /tmp/grid.png *.png                     # 单独出对比拼图
 ```
 
 判定阈值（**全五类**；此前只有 A/B 两列，C/D/E 缺）：

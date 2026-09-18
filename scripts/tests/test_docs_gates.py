@@ -137,6 +137,37 @@ def test_no_machine_paths():
     check("无本机绝对路径", not hits, f"{hits[:3]}")
 
 
+# ── 示例命令不得写死技能目录（换宿主的普适性）─────────────────────
+def test_skill_dir_not_hardcoded():
+    """2026-09-18：SKILL.md §5 与 references/size-and-params.md 共 4 处把
+    「技能目录 + /scripts/xxx.py」拼成绝对路径写死。两个问题：
+
+      ① 本技能 §7 硬规则 4 自己写的是「路径名先 `find` 再引用」，示例却违反；
+      ② 本技能不只装在 WorkBuddy 下——本机 ~/.qwenworkcn/skills/ 就有一份，
+         别的宿主会装进自己的 skills 目录。照抄写死的命令在这些宿主上直接 404。
+
+    改为在每个示例开头定义一次 `SKILL=<技能目录>`，其余一律 `$SKILL/scripts/…`，
+    这样「换宿主先确认」只剩一个改动点，而不是散落四处。
+
+    范围只限**指导性文档**（SKILL.md / references / sub-skills）：CHANGELOG.md 是
+    历史记录，引用旧写法是它的职责，不该被这条门禁逼着改写事实。
+    """
+    pat = re.compile(r"skills/taxue-imagegen/scripts")
+    docs = [os.path.join(ROOT, "SKILL.md")]
+    for sub in ("references", "sub-skills"):
+        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, sub)):
+            dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
+            docs += [os.path.join(dirpath, fn) for fn in filenames
+                     if fn.endswith(".md")]
+    hits = []
+    for p in docs:
+        for i, line in enumerate(open(p, encoding="utf-8"), 1):
+            if pat.search(line):
+                hits.append(f"{os.path.relpath(p, ROOT)}:{i}")
+    check(f"指导性文档不写死「技能目录+scripts」路径（查了 {len(docs)} 个 .md，"
+          f"应改用 $SKILL/scripts/…）", not hits, f"{hits[:3]}")
+
+
 # ── 常驻面 / 条件面的分层契约（2026-09-18 优化轮）───────────────────
 def test_surface_layering():
     """2026-09-18：把「每轮都要付的常驻面」与「命中才读的条件面」拆开。
@@ -151,7 +182,9 @@ def test_surface_layering():
          读 front-matter 的；旧检查只找 "description:" 字符串，全绿放行。
       2. 体积预算：description ≤ 2,000 B、SKILL.md ≤ 36,000 B。
       3. 条件面文件必须真的被接线：文件存在、SKILL.md 提到、且进了 §4 加载
-         协议表——否则就是「搬出去没人读」。
+         协议表——否则就是「搬出去没人读」。**覆盖全部 references/，
+         不是只点名两个**（2026-09-18 泛化：原来写死两个文件名，
+         explore-mode.md 与百相图两份提示词因此长期漏接线而门禁全绿）。
     """
     skill = open(os.path.join(ROOT, "SKILL.md"), encoding="utf-8").read()
     lines = skill.splitlines()
@@ -194,10 +227,19 @@ def test_surface_layering():
         check(f"SKILL.md 提到 {rel}", rel in skill, "搬出去了但没接线")
         check(f"§4 加载协议表含 {rel}", rel in proto, "命中该场景时读不到")
 
-    orphans = [os.path.basename(p) for p in glob.glob(os.path.join(ROOT, "references", "*.md"))
-               if os.path.basename(p) not in skill]
-    check("references/ 无孤儿文件（每个都在 SKILL.md 里被引用）", not orphans,
-          f"未被引用: {orphans}")
+    # 条件面接线：原实现把 jimeng-env.md / cloud-postprocess.md 两个文件名写死在
+    # 循环里，其余 13 个 references 只查「在 SKILL.md 提到过」——于是
+    # explore-mode.md、crowd-100-faces-prompt-v1/v2.md 长期没进 §4 而门禁全绿。
+    # 泛化成「每个 references/*.md 都必须在 §4 出现」：§4 就是那张场景表，
+    # 不进表 = 命中该场景时读不到 = 搬出去等于删掉。
+    refs = sorted(os.path.basename(p)
+                  for p in glob.glob(os.path.join(ROOT, "references", "*.md")))
+    unmentioned = [f for f in refs if f not in skill]
+    check(f"references/ 无孤儿文件（{len(refs)} 个文件都在 SKILL.md 里被引用）",
+          not unmentioned, f"未被引用: {unmentioned}")
+    unwired = [f for f in refs if f not in proto]
+    check(f"§4 加载协议表覆盖全部 references（{len(refs)} 个）", not unwired,
+          f"未接线: {unwired}——搬出去了但没进 §4 场景表，命中该场景时读不到")
 
 
 # ── 坑 → 检测层映射（配置到可验证单元的显式映射）────────────────────
@@ -232,6 +274,17 @@ def test_pitfall_coverage():
           f"坑集合 {sorted(pitfalls)}，表里 {sorted(rows)}")
     bad_layer = {n: l for n, (l, _) in rows.items() if l not in allowed}
     check("检测层取值合法（六个固定层）", not bad_layer, f"非法层: {bad_layer}")
+
+    # ①·乙 症状速查表：文件开篇承诺「按症状速查」，但 2026-09-18 前只列到坑 18，
+    # 坑 22–35（去水印算法族 / 阈值重标 / 纸白 / 分材质填充）全缺——恰好是排障
+    # 最费时间、单节最长的那批。检测层表有覆盖门禁、症状表却一直没有，这就是
+    # 「门禁不对称导致静默漂移」。只认表格数据行（第二列是「坑 N」），
+    # 不把正文里提到的坑号算进来，否则散文一句话就能把覆盖度刷满。
+    sym = text.split("## 坑 → 检测层映射")[0]
+    sym_pits = set(int(m) for m in
+                   re.findall(r"^\|\s*[^|]+\|\s*坑 ?(\d+)\s*\|\s*$", sym, re.M))
+    check(f"症状速查表覆盖全部坑（{len(pitfalls)} 个）", sym_pits == pitfalls,
+          f"缺: {sorted(pitfalls - sym_pits)}——按症状查不到，只能整读 104 KB")
 
     # 反查实现：preflight 行必须对得上 preflight.py 里的规则
     pf = open(os.path.join(HERE, "preflight.py"), encoding="utf-8").read()
@@ -301,4 +354,5 @@ def test_skill_verify_consistency():
 
 TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
-         test_no_machine_paths, test_skill_verify_consistency]
+         test_no_machine_paths, test_skill_verify_consistency,
+         test_skill_dir_not_hardcoded]

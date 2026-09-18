@@ -206,6 +206,71 @@ def export_textband(path, im):
     return out
 
 
+def align_log(log_path):
+    """把 runs.csv 的表头对齐到 CSV_COLS；返回 True 表示还需要写表头。
+
+    **为什么不能只在文件不存在时写表头**（2026-09-18 实测）：
+    v1.19 给 CSV_COLS 加了 reason / hint 两列，但老机器上那份 runs.csv 的表头还是
+    旧的 14 列，而原实现只在「文件不存在」时写表头——于是此后每一行都会错位。
+    实测本机 27 行里 15 行错位，表头最后一列 `note` 里装的其实是 reason 码，
+    正好废掉 reason 码自己要解决的问题（「这张图为什么重出」可归因）。
+
+    测试没拦住是因为 `test_reason_codes_recorded` 每次用全新的临时文件，
+    **永远拿到新表头**——门禁只跑了「干净夹具」，没跑「从旧版升上来」的夹具。
+    这里按列名迁移旧行（列义可映射就不丢历史），认不出表头时留备份后重开。
+    """
+    if not os.path.exists(log_path) or os.path.getsize(log_path) == 0:
+        return True
+    try:
+        with open(log_path, newline="", encoding="utf-8") as f:
+            rows = list(csv.reader(f))
+    except (OSError, UnicodeDecodeError):   # 读不了就别动它，交给下游报错
+        return False
+    if not rows:
+        return True
+    head, data = rows[0], rows[1:]
+    if head == CSV_COLS:
+        return False
+
+    bak = f"{log_path}.bak-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    try:
+        with open(bak, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(rows)
+    except OSError as e:
+        print(f"warn    runs.csv 表头过旧且备份失败（{e}），本次不迁移", file=sys.stderr)
+        return False
+
+    with open(log_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(CSV_COLS)
+        if set(head) <= set(CSV_COLS):
+            # 逐行按**它自己的**列序归位。混排是旧表头的直接后果，两种行都要照顾：
+            #   · 字段数 == 当前列数 → 该行本就是新列序（旧表头配新格式行），
+            #     按旧列名映射会把末两列读成 hint / note，**丢数据**；
+            #   · 否则按表头名映射，缺失列补空。
+            # 实测：真实日志 27 行里 15 条是新格式行，其中 12 条带 note
+            # （如「复刻版去水印」），一律按名映射会把它们全部改写掉。
+            #
+            # 只在「表头不符」时做这件事：表头已对而个别行偏短的日志，本工具自己
+            # 写不出来（append_log 每次写满整行），真遇到也无法判定那些行按哪套
+            # 列序排，猜比不猜更坏——那时按当前表头名映射会把旧 note 读成 reason。
+            def emit(r):
+                if len(r) == len(CSV_COLS):
+                    w.writerow(r)
+                else:
+                    d = dict(zip(head, r))
+                    w.writerow([d.get(c, "") for c in CSV_COLS])
+            for r in data:
+                emit(r)
+            print(f"note    runs.csv 表头过旧（{len(head)} 列 ≠ {len(CSV_COLS)} 列），"
+                  f"已按列名迁移 {len(data)} 行；原文件备份为 {os.path.basename(bak)}")
+        else:
+            # 认不出列义就不猜，留备份后重开——错位记账比如实记账更坏
+            print(f"warn    runs.csv 表头无法识别，已备份为 {os.path.basename(bak)} "
+                  f"并重新记账（原 {len(data)} 行不再并入）", file=sys.stderr)
+    return False
+
+
 def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False,
                log_path=None):
     """追加一行运行记录。no_log=True 时跳过（跑测试/验证不污染生产记账）。"""
@@ -213,10 +278,10 @@ def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False
         return
     log_path = log_path or LOG_PATH
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    new = not os.path.exists(log_path)
+    need_header = align_log(log_path)
     with open(log_path, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        if new:
+        if need_header:
             w.writerow(CSV_COLS)
         w.writerow([
             row.get("ts", ""), row["file"], track, row["size"],

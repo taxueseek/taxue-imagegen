@@ -255,6 +255,9 @@ def test_reason_codes_recorded():
       ① 表头含 reason / hint；
       ② pending 行的 reason 必须写明是哪一个原因（本例 paper_warm）；
       ③ pass 行的 reason 为空 —— 空 reason 才代表「真的没问题」。
+
+    注意本测试用**全新临时文件**，测不到「从旧版升上来的日志」那条路径
+    （这正是它长期漏掉表头错位的原因）；那部分由 `test_log_header_migrated` 覆盖。
     """
     import csv
     from PIL import Image
@@ -305,6 +308,142 @@ def test_reason_codes_recorded():
               f"hint={rows[0]['hint'] if rows else '-'}")
 
 
+# ── 旧版 runs.csv 必须能续写（门禁只跑干净夹具的系统性盲区）──────────
+def test_log_header_migrated():
+    """2026-09-18：上面那条 test_reason_codes_recorded 每次用全新的临时文件，
+    **永远拿到新表头**——于是「从旧版本升上来的 runs.csv」这条路径从来没被测过。
+
+    实测后果：v1.19 给 CSV_COLS 加了 reason / hint，但表头只在文件不存在时写，
+    老机器上那份 14 列表头一直留着，此后每行都错位（实测 27 行里 15 行，
+    表头最后一列 `note` 里装的其实是 reason 码）——正好废掉 reason 码自己要
+    解决的归因问题。所以这里补一个「旧表头夹具」：
+
+      ① 表头被迁移到 CSV_COLS（长度与列名都对）；
+      ② 旧行不丢，且 `note` 按**列名**归位（不是按位置硬塞）；
+      ③ 新追加行的 reason / hint / note 各就各位；
+      ④ 迁移前留了备份文件。
+    """
+    import csv
+    import glob
+    from PIL import Image
+
+    pc = os.path.join(HERE, "postcheck.py")
+    # v1.19 之前的表头：没有 reason / hint
+    legacy_cols = ["ts", "file", "track", "size", "base", "white_pct", "paper_pct",
+                   "R-B", "sat", "top_noise", "top_dev", "text", "verdict", "note"]
+
+    with tempfile.TemporaryDirectory() as d:
+        log = os.path.join(d, "runs.csv")
+        with open(log, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(legacy_cols)
+            # ① 旧格式行（14 字段，旧列序）
+            w.writerow(["2026-01-01 00:00:00", "old_a.png", "A", "1024x1536", "35",
+                        "7.0", "97.3", "-0.1", "67.8", "49.6", "49.5", "ok",
+                        "blocker", "旧行备注 A"])
+            w.writerow(["2026-01-02 00:00:00", "old_b.png", "B", "1024x1536", "200",
+                        "0.0", "60.0", "1.0", "30.0", "20.0", "5.0", "ok",
+                        "pass", "旧行备注 B"])
+            # ② 新格式行（16 字段）却挂在旧表头下——这是最容易被迁移写坏的一类：
+            #    它已经是当前列序，按旧表头名映射会把 reason 读成 note、note 丢掉。
+            #    真实日志里 15 条新格式行有 12 条带 note，本夹具复现这个形状。
+            w.writerow(["2026-01-03 00:00:00", "mix_c.png", "A", "1024x1536", "40",
+                        "6.0", "96.0", "-0.2", "65.0", "48.0", "48.0", "ok",
+                        "pass", "", "", "混排行备注 C"])
+            w.writerow(["2026-01-04 00:00:00", "mix_d.png", "B", "1024x1536", "210",
+                        "0.0", "58.0", "0.9", "29.0", "19.0", "4.0", "ok",
+                        "pending", "text_unverified", "", "混排行备注 D"])
+
+        img = os.path.join(d, "new.png")
+        Image.new("RGB", (1024, 1536), (254, 252, 245)).save(img)   # 白底泛黄 → pending
+        r = subprocess.run([sys.executable, pc, img, "--track", "A",
+                            "--log-path", log, "--text", "ok"],
+                           capture_output=True, text=True)
+        check("postcheck 能在旧表头日志上续写", r.returncode in (0, 1, 3),
+              f"rc={r.returncode} {r.stderr[-160:]}")
+
+        raw = list(csv.reader(open(log, encoding="utf-8")))
+        check("旧版 runs.csv 表头被迁移到当前 CSV_COLS",
+              raw and len(raw[0]) == len(legacy_cols) + 2
+              and {"reason", "hint"} <= set(raw[0]),
+              f"迁移后表头={raw[0] if raw else None}")
+        check("迁移后每行列数与表头一致（不再错位）",
+              all(len(r_) == len(raw[0]) for r_ in raw[1:]),
+              f"字段数集合={sorted({len(r_) for r_ in raw[1:]})}")
+
+        rows = list(csv.DictReader(open(log, encoding="utf-8")))
+        # 用 .get 取列：表头迁移失败时 DictReader 里没有 reason/hint 键，
+        # 直接下标会抛 KeyError，把「诊断信息」变成一行 traceback。
+        # 这里要让断言失败得可读——每一个都是「出了什么、期望什么」。
+        def cell(r_, k):
+            return r_.get(k, "<表头无此列>")
+        check("旧行不丢且 note 按列名归位",
+              len(rows) == 5 and cell(rows[0], "note") == "旧行备注 A"
+              and cell(rows[1], "note") == "旧行备注 B",
+              f"行数={len(rows)} note={[cell(r_, 'note') for r_ in rows[:2]]}")
+        check("旧行缺失的新列为空（不把旧 verdict 塞进 reason）",
+              cell(rows[0], "reason") == "" and cell(rows[0], "verdict") == "blocker",
+              f"reason={cell(rows[0], 'reason')!r} verdict={cell(rows[0], 'verdict')!r}")
+        # 混排行：note 必须原样留下，不能被 reason 顶掉（真实日志 12/15 行属此类）
+        check("混排的新格式行 note 不被 reason 顶掉（不丢历史备注）",
+              cell(rows[2], "note") == "混排行备注 C"
+              and cell(rows[2], "reason") == ""
+              and cell(rows[3], "note") == "混排行备注 D"
+              and cell(rows[3], "reason") == "text_unverified",
+              f"C: reason={cell(rows[2], 'reason')!r} note={cell(rows[2], 'note')!r}；"
+              f"D: reason={cell(rows[3], 'reason')!r} note={cell(rows[3], 'note')!r}")
+        check("迁移后新追加行各列就位",
+              cell(rows[4], "verdict") == "pending"
+              and cell(rows[4], "reason") == "paper_warm"
+              and cell(rows[4], "note") == "",
+              f"verdict={cell(rows[4], 'verdict')!r} reason={cell(rows[4], 'reason')!r} "
+              f"note={cell(rows[4], 'note')!r}")
+        check("迁移前留下备份（可回退）",
+              glob.glob(log + ".bak-*"),
+              "原文件没备份就原地改写了")
+
+        # 表头已对齐后必须「不再迁移」：否则每次 postcheck 都会重写整个日志并多留
+        # 一个 .bak——恒等映射的结果一样，内容上看不出来，但日志目录会被备份淹掉。
+        # 判据不能用「备份个数」：备份名带秒级时间戳，同一秒内的两次迁移会撞名
+        # （坑 17 的老问题），个数看起来没变。改用**备份内容**判定——若第二次真的
+        # 又迁移了一次，备份会被覆盖成「迁移后」的 16 列表头版本。
+        img2 = os.path.join(d, "new2.png")
+        Image.new("RGB", (1024, 1536), (252, 252, 252)).save(img2)
+        subprocess.run([sys.executable, pc, img2, "--track", "A",
+                        "--log-path", log, "--text", "ok"],
+                       capture_output=True, text=True)
+        rows_after = list(csv.reader(open(log, encoding="utf-8")))
+        baks = sorted(glob.glob(log + ".bak-*"))
+        bak_head = list(csv.reader(open(baks[0], encoding="utf-8")))[0] if baks else []
+        check("表头已对齐的日志不再迁移（备份仍是迁移前那份旧日志）",
+              len(baks) == 1 and bak_head == legacy_cols and len(rows_after) == 7,
+              f"备份 {len(baks)} 个、备份表头 {len(bak_head)} 列"
+              f"（期望 {len(legacy_cols)}）、总行数 {len(rows_after)}（期望 7）")
+
+    # 认不出的表头：不猜列义，留备份后重开。猜的代价是把别的工具的列当成本表列，
+    # 于是「记账」变成编造——错位记账比如实记账更坏。
+    with tempfile.TemporaryDirectory() as d:
+        log = os.path.join(d, "runs.csv")
+        with open(log, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["foo", "bar", "baz"])
+            w.writerow(["1", "2", "3"])
+        img = os.path.join(d, "t.png")
+        Image.new("RGB", (1024, 1536), (252, 252, 252)).save(img)
+        subprocess.run([sys.executable, pc, img, "--track", "A",
+                        "--log-path", log, "--text", "ok"],
+                       capture_output=True, text=True)
+        raw = list(csv.reader(open(log, encoding="utf-8")))
+        baks = sorted(glob.glob(log + ".bak-*"))
+        merged = any("foo" in r or "baz" in r for r in raw[1:])
+        current_cols = legacy_cols[:13] + ["reason", "hint", "note"]
+        check("认不出的表头：留备份后重开，不把外来行并进来",
+              raw[0] == current_cols and len(raw) == 2 and not merged and baks,
+              f"表头={raw[0][:4]}… 行数={len(raw)}（期望 2）"
+              f" 并入了外来行={merged} 备份={len(baks)}")
+
+
 TESTS = [test_postcheck_verdict, test_cli_help, test_top_noise_not_blocker,
          test_postcheck_track_e, test_postcheck_wm_not_false_blocker,
-         test_postcheck_dewm_backcompat, test_reason_codes_recorded]
+         test_postcheck_dewm_backcompat, test_reason_codes_recorded,
+         test_log_header_migrated]
