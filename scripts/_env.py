@@ -45,6 +45,23 @@ def _pkg_of(exc):
     return (name or "").split(".")[0] or None
 
 
+def _living_interpreters():
+    """提示里只报**真实存在**的解释器，最多两个，且排除当前这个（它就是缺依赖的那个）。
+
+    `best_interpreter()` 的候选里有 WorkBuddy 内置路径——它只在 WorkBuddy 机上有；
+    硬编码无条件推荐，会让其他机器上的第一条修复路径指向不存在的文件。
+    """
+    out = []
+    cur = os.path.realpath(sys.executable)
+    for c in best_interpreter():
+        if os.path.realpath(c) == cur or not os.path.exists(c):
+            continue
+        out.append(c)
+        if len(out) == 2:
+            break
+    return out
+
+
 def die(exc, modules=None):
     """报告缺失依赖并退出。`modules` 是本脚本真正需要的包（调用方最清楚）。
 
@@ -55,10 +72,20 @@ def die(exc, modules=None):
     print(f"❌ 依赖不可用：{exc}", file=sys.stderr)
     if modules:
         print("   本脚本需要：" + "、".join(modules), file=sys.stderr)
-    print(f"   ① 换解释器重跑（推荐，WorkBuddy 内置的带齐依赖）：{MANAGED_HINT}", file=sys.stderr)
+    living = _living_interpreters()
+    if living:
+        print(f"   ① 换解释器重跑（本机真实存在）：{' 或 '.join(living)}", file=sys.stderr)
+    else:
+        print(f"   ① 换解释器重跑：用带齐依赖的那个"
+              f"（WorkBuddy 内置是 {MANAGED_HINT}，仅 WorkBuddy 机上有）", file=sys.stderr)
     if pkg:
         target = PKG_HINT.get(pkg, pkg)
-        print(f"   ② 或装上它：{sys.executable} -m pip install {target}", file=sys.stderr)
+        req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
+        if os.path.exists(req):
+            print(f"   ② 或一次装齐：{sys.executable} -m pip install -r {req}"
+                  f"（或单装 {target}）", file=sys.stderr)
+        else:
+            print(f"   ② 或装上它：{sys.executable} -m pip install {target}", file=sys.stderr)
     else:
         print("   ② 或按上面的报错装齐依赖后重跑", file=sys.stderr)
     print(f"   当前解释器：{sys.executable}", file=sys.stderr)

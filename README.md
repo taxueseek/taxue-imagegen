@@ -16,7 +16,7 @@
 
 四种类型、四种工作流——把一句话做成稳定的封面、群像、包装样机或分镜。
 
-[![Version](https://img.shields.io/badge/VERSION-1.19.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.20.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑通。出图走它的 ImageGen，填槽和验收由脚本完成。同系列另外三个技能交的是提示词本身，复制到哪都能用；本技能交的是一条跑在 WorkBuddy 里的流水线。
 

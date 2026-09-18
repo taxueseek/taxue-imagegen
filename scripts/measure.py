@@ -25,8 +25,11 @@ import sys
 
 try:
     from PIL import Image, ImageStat
-except ImportError:
-    sys.exit("需要 pillow：pip install pillow")
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['PIL'])
 
 
 def metrics(path, with_top=False):

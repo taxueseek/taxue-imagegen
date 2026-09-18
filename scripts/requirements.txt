@@ -1,0 +1,5 @@
+# taxue-imagegen 全部脚本的依赖（缺依赖时 _env.py 的修复路径 ② 指向本文件）
+# 量测只需 PIL；去水印链要 numpy + cv2。装齐即可覆盖全部功能。
+numpy
+pillow
+opencv-python-headless

@@ -1,6 +1,6 @@
 ---
 name: taxue-imagegen
-version: 1.19.0
+version: 1.20.0
 updated: 2026-09-18
 agent_created: true
 description: >-
@@ -118,7 +118,7 @@ description: >-
 | 1 | 定类型 + 定尺寸 | 一次定死，中途别改 |
 | 2 | **机械出稿** | **A/B/C 走脚本（默认）**：类型 A `fill_meta.py A --set 视觉风格=… --set 内容主题=… --set 表达意图=… --set 主体形象=… --set 英文主标题=… --set '中文短句=…' --set '英文短句=…' [--manpu]`——从 v5.4 模板精确组装，逐字声明与词数自动推导，标点前置校验；类型 B `fill_meta.py B --theme 鸟\|猫\|狗\|合影\|休息\|前行\|百相`；类型 C `fill_meta.py C --list` 查 17 槽后 `--set` 填齐（【】槽位替换，单专色时 `--set '+色B='` 留空会自动清掉空括号）；**类型 E `fill_meta.py E --list` 查 11 槽后 `--set` 填齐（自动校验「格数」与「逐格清单」条数一致）**。全者组装完都自动过 preflight。**脚本已含全部验证过的禁令，LLM 不重抄模板**。**D 是半机械**：改 `build_storyboard.py --case cyber\|ink` 的 SCENES 生成 9 条，生成后单独跑 `preflight.py --track D`（跳过 A/B 专属规则）。模板没覆盖的新需求才手写（语种：B 必须英文，A 中文场景用中文，见坑 12），手写完单独跑 preflight |
 | 3 | 报积分 → 出图 | 生产模式出 1 张；确需多张的**并行发起**，不要串行等；同主题多张时，三组文案/主体描述只写一次共享，各张只改构图与画幅 |
-| 4 | **postcheck 一次调用验收** | `postcheck.py 图.png --track A --top --text ok --note '版本/场景'`——量测 + 底部文字带 2x 裁片（替代手动裁剪放大）+ **水印自动识别**（v1.14 起 `--wm auto` 为默认：`wm_auto.py` 先判有无，命中才走 `dewm_v10.py` 反解并复检；干净图不再被无条件动刀，存疑交人不拦交付。`--dewm` 仍可用，等价 `--wm force`）+ runs.csv 记账，全程 <0.5s。三档评审卡的完整口径、水印三分支、缺陷修复路由与各类型验收重点见 **子技能 `sub-skills/verify/`**。三档评审卡：**blocker**（泛黄 R-B≥3 / 顶部被侵入 / 缺字错字 / 主标题重复 / 类型 E 格数不符 / 类型 D 尺寸不符）才允许一次定向重生只改一项；**可修**（指标在阈值内、仅细节软或小构图偏差）不重生，可按 第 6 节 向用户建议云端后处理（获同意后执行）；**通过** = 指标在阈值内 + 文字逐字无误。**注意三档是评审卡的判定口径，脚本 verdict 只有 blocker/pending/pass 三值**（pending = 文字未核对，未传 `--text` 时出现）；「可修」= 脚本判 pass 但目检有瑕疵，由 Agent 判定，不写进 runs.csv。修复纪律：只改所属那一段指令，禁止堆第二波禁令（坑 12）；精确文字两轮仍错 → 后期排版补字，不假装正确、不同词重试。v10 后仍有残留（亮字水印/压复杂图形）→ `pick_wm.py` 四版自动选最佳，输出到 `_clean/`（**不覆盖原图**，A/B 对比可回溯）；选版按 **评分 = |残留 amp| + 结构损伤分**（v1.13 起；v1.15 起结构参照只在同 k̂ 口径的 v8/v9 间选），**单看 amp 会选中把画面抹平的 inpaint 版**（坑 28）。**注意 amp 判 CLEAN 不代表目视干净**：平色底上的字形残影 amp 抓不到（R²≈0 被当纹理放过），目视有痕时用 `metric_flat.py` 量平底残影 RMS（坑 22） |
+| 4 | **postcheck 一次调用验收** | `postcheck.py 图.png --track A --top --text ok --note '版本/场景'`——量测 + 底部文字带 2x 裁片 + **水印自动识别**（`--wm auto` 默认：`wm_auto.py` 按 amp 与 R² 双条件先判有无，命中才走 `dewm_v10.py` 并复检，干净图不动刀；`--dewm` 等价 `--wm force`）+ runs.csv 记账，全程 <0.5s。**判定流程与三档评审的真源在子技能 `sub-skills/verify/`**：三档口径（脚本 verdict 只有 blocker/pending/pass 三值，未传 `--text` 是 pending 不得计通过）、水印三分支、缺陷修复路由（印在画面里→重生／缺失可替换→编辑）、`pick_wm` 选版判据与分歧保护、各类型验收重点；数值阈值见 §5。生产纪律一句话：**blocker 才允许一次定向重生，只改一项**，修复只改所属那一段指令（坑 12）；精确文字两轮仍错 → 后期排版补字，不假装正确 |
 | 5 | 内联展示 | 用 `show_widget` 让用户在对话里直接看到，别只给路径 |
 | 6 | 归档 | **先 `find` 定位归档脚本再引用**（§7 硬规则 4 说的就是这件事，别照抄别人的路径）：本机成品目录下有个 `_tools/sync_images.py`，确认存在再 `--apply`；换机/换目录时先按本机约定找。**只归档成品**，中途产物留会话目录或子目录隔离（坑 13 教训④） |
 | 7 | 记录 | 翻车/新结论写回 `references/pitfalls.md`；运行数据由 postcheck 自动写入 `scripts/logs/runs.csv`（模板调优的数据反馈闭环）；**验证过的修复当场回写主模板**（poster-v5.md §一 或 fill_meta 对应解析逻辑） |
@@ -186,6 +186,9 @@ $PY .../measure.py --grid /tmp/grid.png *.png                     # 单独出对
 **水印**：`postcheck.py` 默认 `--wm auto`——先识别，命中才动手，去后复检；
 干净图不被无条件动刀。三分支与双条件闸门见子技能 §3。
 `--dewm` 等价 `--wm force`（保留旧参数），`--wm off` 关闭。
+**`dewm` 报 `conf<0.1` / `k̂≈0` 是它在说「这张图我解不了」——不要 `--no-guard` 硬解，
+也不要改用手工 inpaint 硬框**：背景是深色实色块 + 高频纹理（或水印跨材质）时，
+这两条路都会把整块抹平并啃掉邻接文字；应改用**分材质填充**（坑 35）。
 
 **泛黄 / 纸白偏暖**：白底且母题本身是纸、绢、墙面的图种（类型 A 常见），
 纸白会被模型当**材质色**渲染，`R-B` 稳定偏暖，**提示词压不下来**（坑 33）。
@@ -232,50 +235,52 @@ postcheck 命中时输出 `[paper_warm]` 并给 **pending**（不是 blocker）�
 ## 8. 参考文件与脚本索引
 
 **文件分层**：出图只碰 scripts；references 按第 4 节场景表按需读。
+本表只答「何时用哪个」；**判据语义、算法细节与实测依据的真源在各文件 docstring 与对应文档里**，这里不再重复。
 
-| 文件 | 内容 |
+| 文件 | 何时用 |
 |---|---|
-| `references/poster-v5.md` | 类型 A 操作层：v5.4 模板全文（含全部已验证补丁）、穿插型变体（§一·乙）、填空规则、满铺/孤置二选一（§五）、九个已验证填空、场景适配 |
-| `references/poster-v5-history.md` | 类型 A 历史层：版本演进 v1→v5.4、v5 稳定性/九风格实测、v5.1/v5.2 验证详情（出图不读） |
-| `references/crowd-illustration.md` | 类型 B 方法层：元提示词（可数约束已并入）、实测结论、与类型 A 对比（11KB） |
-| `references/crowd-themes.md` | 类型 B 主题库：主题一~五完整正负向提示词（36KB，**禁止整读**，fill_meta 按主题提取） |
-| `references/packaging-editorial.md` | 类型 C 方法层：写实包装 mockup 中文元模板 + 槽位表 + 硬规则（2026-09-08 三轮实测，r3 4/4 逐字全对）。模板用【】槽位，preflight 已支持拦截 |
-| `references/storyboard.md` | 类型 D 方法层：双 LOCK 一致性锚 + 9 帧镜头设计法 + 实测参数（1024x1792；必须串行出图）。构建脚本 `build_storyboard.py --case cyber\|ink`（两案例共用 build()；`build_storyboard_ink.py` 仅为旧命令的转发壳） |
-| `references/multigrid-layout.md` | 类型 E 方法层：多格排版元模板（【】槽位）+ 硬规则（一致性锚必填、清单全给或全不给、防样机收口）+ 三条已验证填法（精灵图/系列海报/邮票组）|
-| `references/size-and-params.md` | ImageGen 全部参数、尺寸实测原始数据、画幅选择指南、积分与 quality |
-| `references/pitfalls.md` | 已踩的坑（按症状速查，只读命中节）+ 待解决项 |
-| `references/cloud-postprocess.md` | 云端后处理层完整版（SKILL.md §6 的展开）：操作映射表、去水印双路由、官方六条调用纪律 |
-| `references/jimeng-env.md` | 豆包/即梦适配层完整版（SKILL.md §9 的展开）：适配边界表、S0–S6 平台检测信号链、用法与流程对比、已知边界 |
-| `scripts/fill_meta.py` | **机械填槽出稿（默认入口）**：A 从 poster-v5.md §一 组装（{N}/逐字声明自动推导）；B 按主题提取；**C 从 packaging-editorial.md §一 组装（【】槽位，空括号自动清理）；E 从 multigrid-layout.md §一 组装（【】槽位 + 格数/清单条数一致性校验）**；全者标点前置校验 + 内嵌 preflight。`--manpu` 切满铺型；`--list` 查槽位/主题 |
-| `scripts/jimeng.py` | **豆包/即梦适配层：只换算出图尺寸，prompt 与 fill_meta 逐字节一致**。`--sizes` 查尺寸、`--platform workbuddy` 切回原行为。适配边界、S0–S6 平台检测信号链、用法与已知边界见 `references/jimeng-env.md` |
-| `scripts/test_jimeng.py` | jimeng.py 断言式回归测试（43 项）：指纹匹配、分层裁决、模拟两种宿主运行时、显式覆盖、尺寸映射、**经适配层的 prompt 与 fill_meta 逐字节一致、已无任何改写函数**；不依赖 numpy/PIL，已并入 `run_tests.sh` 第 4 步 |
-| `scripts/postcheck.py` | **出图后一次调用（默认入口）**：量测（复用 measure）+ 文字带 2x 裁片（A/C）+ **水印自动识别（`--wm auto` 默认，命中才去 + 去后复检）** + runs.csv 记账，<0.5s。`--track A\|B\|C\|D\|E`；`--expect-cells N` 校类型 E 格数；`--dewm` 等价 `--wm force`。verdict 三档 blocker/pending/pass，退出码 1/3/0（pending=文字未核对或水印存疑，不算通过）。流程与判定政策见 `sub-skills/verify/` |
-| `scripts/wm_auto.py` | **水印自动识别与条件去除**（v1.14）：amp 与 R² 双条件闸门 → skip / remove / manual 三分支；去后复检，原图永不改。默认只探测不动手，`--remove` 才执行。R² 闸门的实测依据见 `sub-skills/verify/evidence.md` §1 |
-| `scripts/measure.py` | 量测层：`metrics()` 通用指标（白底/泛黄/饱和度/顶部留白，被 postcheck 复用）；**`grid_metrics()` 类型 E 网格结构**（格数 / 每格等比例 / 格间净空，校验「说的和画的」是否一致） |
-| `scripts/preflight.py` | 出图前静态检查：34 个坑中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 槽位）+ 残留槽位（认 {} 与【】两种）。`--track A\|B\|C\|D\|E`，按类型切换适用规则；fill_meta 已内嵌 |
-| `scripts/dewm.py` | 逆向 alpha 反解去水印 v6（白底图最优，0.2s/张；非白底会留红蓝噪点/残影）。`pick_wm` 的 v6 候选就是它 |
-| `scripts/dewm_v7.py` | α 模板做 mask + cv2.inpaint 兜底（深色/金底/满铺图更稳，但纹理被抹平） |
-| `scripts/dewm_v8.py` | 自适应反解 + k 拟合 + 物理边界守卫（低对比水印更干净，但在已平滑区会过拟合出鬼影） |
-| `scripts/dewm_v9.py` | **v8 + 锚点对齐（当前最优单版，v9.1）**：三重评分（灰度 NCC+梯度 NCC+方差比）±28px×8 档尺度对齐，k̂ 下限 0（无水印自动 no-op）；conf 仅作对齐开关不作门控。合成基准 6 用例平均 PSNR 69.81 vs v8 44.49（坑 21） |
-| `scripts/dewm2.py` | Qwen 版无模板去水印：逐像素向量投影 + RMS 校验门 + 彩度/亮度守卫（来源 .qwenworkcn）。适合未知版式水印；纹理区残留是短板（byzantine 18dB）。已在坑 21 实测归档 |
-| `scripts/bench_dewm_align.py` | 去水印位置/尺度维合成基准（v6/v8/v9 三方 PSNR 对比 + 对齐精度验证），改去水印代码必跑。用法：`TAXUE_BENCH_IMGS="a.png:b.png" python3 scripts/bench_dewm_align.py`（`bench_dewm.py` / `probe_k_bias.py` 同） |
-| `scripts/dewm_v10.py` | **当前默认单版（v1.8 起）**：v9 管线 + 平底自适应融合 + 可解性门控。检测水印框外紧邻带 std，<12 判平底 → 反解与 inpaint 背景按 α 斜坡融合（`--no-fuse` 关，=v9 行为）。**可解性门控（v1.10）**：可见度 `α·(C−背景)` 低于噪声门即判不可解、原图返回不硬解——近白底硬解会把噪声放大 1/(1−α) 倍，实测残差可降 39%（坑 26）；`--no-guard` 关 |
-| `scripts/pick_wm.py` | 疑难图入口——每张跑 v6/v7/v8/v9 四版，按 **总分 = \|残留 amp\| + 结构损伤分** 选最佳，输出 `_clean/`（**绝不覆盖原图**）。判据语义、参照族口径（只收同 k̂ 的 v8/v9）、四处分歧保护（零改动不写产物／分歧告警并**拒绝写入**，两者取舍只能目检）与实测分离度**全部写在文件 docstring**，改判据前先读它（坑 28/29）。`--legacy-score` 回退纯 amp，`--verbose` 看逐版本明细 |
-| `scripts/audit_wm.py` | 去水印质量审计：残留幅度（无原图也能用，\|amp\|≥2.5 判 DIRTY）+ 结构损伤（需 `--ref 原图`，否则审历史图会系统性误报）。**判据定义、适用边界与两条被证伪的替代判据都在文件 docstring**；量纲缺陷与白蚀单向性见坑 30。输出表格 + 三联目检图，JSON 按绝对路径索引 |
-| `scripts/dewm_io.py` | 去水印脚本共享 IO 层：覆盖守卫（默认落 `_clean/`，`--inplace` 显式才覆盖原图）+ 中文路径安全读写 |
-| `scripts/rmwm_light.py` | 亮字水印修复（中值背景 + 双偏差掩膜 + Telea，亮暗通吃）；dewm 反解后残留时逐张补，输出永不覆盖原图 |
-| `scripts/rmwm.py` | 暗字水印 inpaint（top-hat 掩膜）；水印压复杂图形时比反解更优，仅留作补充对照 |
-| `scripts/dewm_v11.py` / `dewm_v12.py` | **暗区/对齐疑难图可选**（非默认）：v11 加暗区迭代修「黑字上的白残留」，v12 加对齐空白守卫修「水印被挪到空白处、原处没处理」。实测整体劣于 v10，故默认仍 v10；仅当目视见暗区残留时手动切 v12 |
-| `scripts/dewm_v13.py` | **实验候选，未并入选版池**：用最小方差（Wiener）融合取代 v10 的平底二值路由。真实库 87 张按 conf 分三组全面优于 v8、单向性违反 0 px；合成基准的相反结论来自评测盲区（坑 32）。**若要启用走 conf 门控路由，不要改 σ**。用法同 v12，多 `--sigma-b` |
-| `scripts/metric_flat.py` | 平底残影 RMS 计量（amp 判 CLEAN 但目视有痕时用，坑 22） |
-| `scripts/paper_white.py` | **白底海报的纸白归正 + 背景去斑**（v1.18，坑 33）：纸白掩膜 → 归一化卷积拍平纸纹/网点 → 按通道白点归正到中性白（默认 250）。只动纸白像素，墨/字/彩色区逐位不变，输出落 `_clean/` 不覆盖原图。`--dry-run` 只看报告。**白底图 `R-B≥3` 时先跑它再考虑重生** |
-| `scripts/test_regressions.py` | 断言式回归测试（每个断言对应一个已修缺陷，含 CLI `--help` 与真实进程退出码断言）。`python3 scripts/test_regressions.py` |
-| `scripts/run_tests.sh` | 总测试门禁（导入检查 / front-matter / preflight 冒烟 / 回归 / 关键文件 / 发布资产 / 隐私扫描 / 发布守卫）。本地与 CI 共用同一套，避免「本地绿、CI 红」 |
-| `.github/workflows/validate.yml` | CI：安装 numpy+pillow+opencv 后跑 `bash scripts/run_tests.sh` |
-| `sub-skills/verify/SKILL.md` | **出图验收子技能**（v1.14）：三档评审口径 / 水印自动政策 / 缺陷修复路由 / 各类型验收重点 / 升级回写纪律 |
-| `sub-skills/verify/evidence.md` | 验收阈值的**实测依据与样本量**（水印双条件闸门 n=14 两组分布、类型 E 网格合成基准、沿用阈值的「不要动」理由） |
+| `references/poster-v5.md` | 类型 A 操作层：v5.4 模板全文、穿插型变体（§一·乙）、填空规则、满铺/孤置（§五） |
+| `references/poster-v5-history.md` | 追溯模板为什么长这样（v1→v5.4 演进与验证详情，出图不读） |
+| `references/crowd-illustration.md` | 类型 B 方法层：元提示词、可数约束、实测结论 |
+| `references/crowd-themes.md` | 类型 B 主题一~五完整正负向提示词（36KB，**禁止整读**，fill_meta 按主题提取） |
+| `references/packaging-editorial.md` | 类型 C 方法层：包装 Mockup 中文元模板（【】槽位）+ 槽位表 + 硬规则 |
+| `references/storyboard.md` | 类型 D 方法层：双 LOCK 一致性锚 + 9 帧镜头设计法（1024x1792，必须串行出图） |
+| `references/multigrid-layout.md` | 类型 E 方法层：多格排版元模板 + 硬规则（一致性锚必填、清单全给或全不给、防样机收口） |
+| `references/size-and-params.md` | 全部参数、尺寸实测原始数据、画幅选择指南、积分与 quality |
+| `references/pitfalls.md` | 翻车了按症状查表（35 个坑，只读命中节）+ 待解决项 |
+| `references/explore-mode.md` | 探索模式规则：单风格 2–5 / 多风格 5–9、分批 ≤3、settle 改名防撞名（坑 17） |
+| `references/cloud-postprocess.md` | 云端后处理完整版（§6 的展开）：操作映射、去水印双路由、官方六条纪律 |
+| `references/jimeng-env.md` | 豆包/即梦适配完整版（§9 的展开）：适配边界表、S0–S6 平台检测信号链 |
 | `references/countable-constraint-test.md` | 可数约束修正的完整实测记录与提示词全文（类型 B 低密度修复） |
 | `references/crowd-100-faces-prompt-v1.md` / `references/crowd-100-faces-prompt-v2.md` | 主题五高密度百相图 v1/v2 完整提示词（脸复制/年龄配额修复实验） |
+| `scripts/fill_meta.py` | **机械填槽出稿（默认入口）**：A/B/C/E 全走它，组装完自动过 preflight；`--list` 查槽位/主题，`--manpu` 切满铺型 |
+| `scripts/jimeng.py` | 豆包/即梦环境出稿：只换算尺寸，prompt 与 fill_meta 逐字节一致；`--sizes` 查尺寸 |
+| `scripts/test_jimeng.py` | jimeng.py 回归测试（43 项，不依赖 numpy/PIL），已并入 run_tests.sh |
+| `scripts/preflight.py` | 手写提示词时单独跑的出图前静态检查（35 个坑中 11 个可文本拦截 + 残留槽位，认 {} 与【】）；fill_meta 已内嵌 |
+| `scripts/postcheck.py` | **出图后一次调用（默认入口）**：量测+文字带 2x 裁片+水印自动识别+runs.csv 记账；`--track A–E`，类型 E 加 `--expect-cells N`；verdict 三值 blocker/pending/pass = 退出码 1/3/0 |
+| `scripts/measure.py` | 单独量测 / `--grid` 出对比拼图；`grid_metrics()` 是类型 E 网格结构判定 |
+| `scripts/wm_auto.py` | 水印自动识别与条件去除：amp 与 R² 双条件闸门 → skip/remove/manual；默认只探测，`--remove` 才执行；实测依据见 evidence.md §1 |
+| `scripts/dewm_v10.py` | **默认单版去水印**：v9 管线 + 平底自适应融合（`--no-fuse` 关）+ 可解性门控（`--no-guard` 关，坑 26） |
+| `scripts/dewm.py` / `dewm_v7.py` / `dewm_v8.py` / `dewm_v9.py` | 手动单选旧版（v6 反解 / v7 inpaint / v8 自适应 / v9 锚点对齐）；同时是 pick_wm 的候选池 |
+| `scripts/dewm_v11.py` / `dewm_v12.py` | 疑难可选（暗区白残留 / 水印挪位），实测整体劣于 v10，非默认 |
+| `scripts/dewm_v13.py` | **实验候选，未并入选版池**：Wiener 融合；若启用走 conf 门控路由，不要改 σ（坑 32） |
+| `scripts/dewm2.py` | Qwen 版无模板去水印（未知版式；纹理区残留是短板），坑 21 实测归档 |
+| `scripts/pick_wm.py` | 疑难图入口：v6–v9 四版按「残留+结构损伤」选优，输出 `_clean/` 绝不覆盖原图；判据与四处分歧保护全在文件 docstring（坑 28/29） |
+| `scripts/audit_wm.py` | 去水印质量审计（残留 + `--ref` 结构损伤 + 三联目检图）；判据定义与适用边界在 docstring，量纲缺陷与白蚀单向性见坑 30 |
+| `scripts/dewm_io.py` | 去水印共享 IO 层：覆盖守卫（默认落 `_clean/`）+ 中文路径安全读写 |
+| `scripts/rmwm_light.py` | 亮字水印修复（亮暗通吃；**含文字的图会啃笔画，首选 dewm_v10**，坑 34）。v1.19 起带**覆盖率守卫**：掩膜 >40% 或 ROI 越界即拒绝写出（纹理/深色实色底上判据会退化成整块掩膜 → 整块抹平，坑 35）；用前先 `--check` 看覆盖率 |
+| `scripts/rmwm.py` | 暗字水印 inpaint（水印压复杂图形时比反解优），仅作补充对照 |
+| `scripts/metric_flat.py` | 平底残影 RMS（amp 判 CLEAN 但目视有痕时用，坑 22） |
+| `scripts/paper_white.py` | **纸白归正 + 背景去斑**（坑 33，确定性免费）：白底图 R-B≥3 先跑它再考虑重生，`--dry-run` 只看报告 |
+| `scripts/bench_dewm_align.py` | 改去水印代码必跑的合成基准（`bench_dewm.py` / `probe_k_bias.py` 同）：`TAXUE_BENCH_IMGS="a.png:b.png" python3 …` |
+| `scripts/explore.py` | 探索模式：CSV 驱动批量出稿 + settle 改名校对 |
+| `scripts/build_storyboard.py` | 类型 D 出稿：改 SCENES 生成 9 条 prompt（`build_storyboard_ink.py` 是旧命令转发壳） |
+| `scripts/calibrate_thresholds.py` | 换模型 / 改判据前先跑：用已归档成品重算各判据触发率 |
+| `scripts/test_regressions.py` | 断言式回归测试入口（断言本体按域拆在 `scripts/tests/`）：`python3 scripts/test_regressions.py` |
+| `scripts/run_tests.sh` | 总测试门禁（导入 / front-matter / preflight 冒烟 / 回归 / 关键文件 / 发布资产 / 隐私 / 发布守卫），本地与 CI 共用 |
+| `.github/workflows/validate.yml` | CI：装 numpy+pillow+opencv（见 `scripts/requirements.txt`）后跑 `bash scripts/run_tests.sh` |
+| `sub-skills/verify/SKILL.md` | **出图验收子技能**：三档评审口径 / 水印自动政策 / 缺陷修复路由 / 各类型验收重点 |
+| `sub-skills/verify/evidence.md` | 验收阈值的**实测依据与样本量**（水印双条件闸门 n=14 两组分布、类型 E 网格合成基准；改阈值先读它） |
 
 ---
 
