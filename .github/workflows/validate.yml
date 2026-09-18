@@ -21,7 +21,8 @@ jobs:
       - name: Install numpy + pillow + opencv
         run: |
           python -m pip install --upgrade pip
-          python -m pip install numpy pillow opencv-python-headless
+          # pyyaml：front-matter 的 YAML 合法性门禁需要它（缺了会 SKIP，CI 上不该 SKIP）
+          python -m pip install numpy pillow opencv-python-headless pyyaml
 
       # Single source of truth: the same suite contributors run locally.
       # It covers import-check, SKILL.md front-matter, preflight, critical

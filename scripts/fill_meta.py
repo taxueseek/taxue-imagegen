@@ -265,6 +265,83 @@ def load_track_c_template():
     return m.group(1).rstrip() + "\n"
 
 
+def load_track_e_template():
+    """从 multigrid-layout.md §一 提取代码块（单一真源，槽位用【】）。"""
+    path = os.path.join(REF, "multigrid-layout.md")
+    text = open(path, encoding="utf-8").read()
+    # §一 之后的第一个代码块才是模板（§四 另有示例代码块）
+    sec1 = text.split("## 一、元提示词模板", 1)
+    if len(sec1) < 2:
+        fail("multigrid-layout.md 中没有找到 §一 标题")
+    m = re.search(r"^```\n(.*?)^```$", sec1[1], re.S | re.M)
+    if not m:
+        fail("multigrid-layout.md §一 中没有找到模板代码块")
+    return m.group(1).rstrip() + "\n"
+
+
+# 格数槽位与「逐格清单」条数的对应：清单用「、」分隔，条数必须等于格数
+GRID_COUNT_SLOT = "格数"
+CELL_LIST_SLOT = "逐格清单"
+
+
+def do_track_e(args):
+    """类型 E 多格排版：按槽位名替换【】，校验格数与清单条数一致，组装完过 preflight。"""
+    template = load_track_e_template()
+    slots = re.findall(r"【([^】\n]+)】", template)
+    unique = []
+    for s in slots:
+        if s not in unique:
+            unique.append(s)
+
+    if args.list:
+        print(f"类型 E（多格排版）：{len(slots)} 处槽位，{len(unique)} 个不同名")
+        for i, s in enumerate(unique, 1):
+            n = slots.count(s)
+            print(f"  #{i} 【{s}】" + (f"  ×{n}" if n > 1 else ""))
+        return
+
+    sets = {}
+    for pair in args.set or []:
+        if "=" not in pair:
+            fail(f"--set 需要 KEY=VALUE：{pair}")
+        key, value = pair.split("=", 1)
+        sets[key.strip()] = value.strip()
+
+    missing = [s for s in unique if s not in sets and not args.allow_partial]
+    if missing:
+        fail("缺槽位：" + "、".join(f"【{m}】" for m in missing)
+             + "（--list 查看全部；--allow-partial 允许半成品）")
+
+    # 格数 × 逐格清单条数一致性（2026-09-12：本类型最容易出的低级错）
+    if GRID_COUNT_SLOT in sets and CELL_LIST_SLOT in sets:
+        try:
+            want = int(re.sub(r"[^0-9]", "", sets[GRID_COUNT_SLOT]) or "0")
+        except ValueError:
+            want = 0
+        got = len([x for x in re.split(r"[、,，;；]", sets[CELL_LIST_SLOT]) if x.strip()])
+        if want and got != want:
+            fail(f"格数({want}) 与 逐格清单({got} 条) 不一致 —— "
+                 "清单用「、」分隔，条数必须等于格数（见 multigrid-layout.md 硬规则 6）")
+
+    result = template
+    for s in unique:
+        if s in sets:
+            result = result.replace(f"【{s}】", sets[s])
+
+    leftover = re.findall(r"【[^】\n]{1,40}】", result)
+    if leftover and not args.allow_partial:
+        fail(f"组装后仍有 {len(leftover)} 个残留槽位：{leftover[:5]}（--allow-partial 允许半成品）")
+
+    print(result)
+    blocked, lines = run_preflight(result, "E")
+    for line in lines:
+        print(line, file=sys.stderr)
+    if args.out:
+        open(args.out, "w", encoding="utf-8").write(result)
+        print(f"written: {args.out}", file=sys.stderr)
+    sys.exit(1 if blocked else 0)
+
+
 def do_track_c(args):
     """类型 C 包装 Mockup：按槽位名替换【】，缺槽报错，组装完过 preflight。"""
     template = load_track_c_template()
@@ -328,8 +405,8 @@ def do_track_c(args):
 
 def main():
     ap = argparse.ArgumentParser(description="机械填槽组装出图提示词（taxue-imagegen）")
-    ap.add_argument("track", choices=["A", "B", "C"],
-                    help="A=竖版概念海报，B=手绘群像，C=包装 Mockup")
+    ap.add_argument("track", choices=["A", "B", "C", "E"],
+                    help="A=竖版概念海报，B=手绘群像，C=包装 Mockup，E=多格排版")
     ap.add_argument("--set", action="append", help="KEY=VALUE，可多次")
     ap.add_argument("--theme", help="类型 B 主题名（--list 查看）")
     ap.add_argument("--manpu", action="store_true", help="类型 A 满铺型：删纯白背景与顶部留白硬底线（二选一）")
@@ -341,8 +418,10 @@ def main():
         do_track_a(args)
     elif args.track == "B":
         do_track_b(args)
-    else:
+    elif args.track == "C":
         do_track_c(args)
+    else:
+        do_track_e(args)
 
 
 if __name__ == "__main__":

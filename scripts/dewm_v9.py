@@ -32,8 +32,14 @@ import argparse
 import os
 import sys
 
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['cv2', 'numpy'])
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dewm_io import imread_any, imwrite_any, safe_target, add_common_args, save_crop  # noqa: E402

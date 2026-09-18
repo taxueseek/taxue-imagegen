@@ -108,6 +108,156 @@ def metrics(path, with_top=False):
     return im, row
 
 
+def grid_metrics(path, bg_tol=26, gap_frac=0.55, min_band=0.04):
+    """类型 E 多格排版的网格结构量测（校验「声明 vs 产出」，不引入新阈值）。
+
+    为什么需要它：类型 E 的硬要求写在 multigrid-layout.md §三——
+      每格等比例、尺寸一致、间距可辨、格数等于 prompt 声明值。
+    这些要求此前只在 **prompt 侧**被 fill_meta 校验（格数与清单条数一致），
+    **图像侧从未验过**：模型完全可能把 4×4 画成 3×4、把格与格糊成一片、
+    或让某一格尺寸跑偏。本函数补上这一环。
+
+    做法：先取四边环带中位数当背景色（多格模板的格间是白/纯色净空），
+    再按行、按列统计「接近背景的像素占比」，占比超 gap_frac 的行/列判为格间净空，
+    被净空切开的连续段即格子带。返回格数、行列数、格宽高一致性。
+
+    返回 dict：
+      ok            是否成功解析
+      cols, rows, cells        列数 / 行数 / 格数
+      band_w, band_h           格子带宽度/高度列表（像素）
+      uniform       格宽高一致性：min/max 比值，1.0 为完全一致
+      gap_px        格间净空的典型宽度（像素，0 = 无净空/无缝）
+      note          人可读说明（含解析失败原因）
+
+    注意：本函数是**提示性量测**，不是硬判定。间隔极细（「无缝隙、边框像素对齐」
+    这类 E 变体）或格内本身大片接近背景色时，连通性会被误判——所以调用方只在
+    给了 --expect-cells 时才把它当判据，且不匹配时输出诊断而非直接判 blocker。
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return {"ok": False, "note": "需要 pillow"}
+
+    im = Image.open(path).convert("RGB")
+    W, H = im.size
+    scale = 256.0 / W
+    small = im.resize((256, max(1, int(H * scale))), Image.LANCZOS)
+    try:
+        px = list(small.get_flattened_data())  # type: ignore[attr-defined]
+    except AttributeError:
+        px = list(small.getdata())
+    w, h = small.size
+
+    def lum(p):
+        return (p[0] + p[1] + p[2]) / 3.0
+
+    # 背景色 = 四边环带的中位数（多格模板的格间净空色）
+    ring = []
+    for x in range(w):
+        ring.append(px[x])
+        ring.append(px[(h - 1) * w + x])
+    for y in range(h):
+        ring.append(px[y * w])
+        ring.append(px[y * w + w - 1])
+    ring_l = sorted(lum(p) for p in ring)
+    bg = ring_l[len(ring_l) // 2]
+
+    is_bg = [abs(lum(p) - bg) <= bg_tol for p in px]
+
+    def bands(axis_len, cross_len, idx_of):
+        """返回 (格子带列表, 净空布尔列表)。cross_len = 另一轴的像素数。"""
+        gaps = []
+        for i in range(axis_len):
+            n = sum(1 for j in range(cross_len) if is_bg[idx_of(i, j)])
+            gaps.append(n / cross_len >= gap_frac)
+        out, run = [], None
+        for i, g in enumerate(gaps):
+            if g:
+                if run is not None:
+                    out.append((run, i - run))
+                    run = None
+            else:
+                if run is None:
+                    run = i
+        if run is not None:
+            out.append((run, axis_len - run))
+        thr = max(1, int(axis_len * min_band))
+        kept = [(s, L) for s, L in out if L >= thr]
+        return kept, gaps
+
+    col_bands, col_gaps = bands(w, h, lambda i, j: j * w + i)
+    row_bands, row_gaps = bands(h, w, lambda i, j: i * w + j)
+
+    if not col_bands or not row_bands:
+        return {"ok": False, "note": "未解析出网格（成片单格或背景色不占多数）",
+                "cols": 0, "rows": 0, "cells": 0, "uniform": 0.0, "gap_px": 0}
+
+    ws = [L for _, L in col_bands]
+    hs = [L for _, L in row_bands]
+    band_uni = min(min(ws) / max(ws), min(hs) / max(hs))
+
+    # 逐格内容外接框：E 的硬规则是「每格等比例、尺寸一致」，只量行/列带不够——
+    # 单格内缩不会改变带的边界（2026-09-12 实测：某格窄 60px，带级 uniform 仍为 1.0）。
+    # 因此在每个「行带 × 列带」交叠矩形内，再向内扫出实际内容框，量真正的格尺寸。
+    def content_box(x0, y0, x1, y1):
+        bx0, by0, bx1, by1 = None, None, None, None
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if not is_bg[y * w + x]:
+                    if bx0 is None or x < bx0:
+                        bx0 = x
+                    if bx1 is None or x > bx1:
+                        bx1 = x
+                    if by0 is None or y < by0:
+                        by0 = y
+                    if by1 is None or y > by1:
+                        by1 = y
+        if bx0 is None:
+            return None
+        return (bx0, by0, bx1 - bx0 + 1, by1 - by0 + 1)
+
+    cell_w, cell_h = [], []
+    for rs, rL in row_bands:
+        for cs, cL in col_bands:
+            # 向内各让 1px，避免把相邻格的边框算进本格
+            box = content_box(cs + 1, rs + 1, cs + cL - 1, rs + rL - 1)
+            if box:
+                cell_w.append(box[2] * W / float(w))
+                cell_h.append(box[3] * H / float(h))
+
+    cell_uni = None
+    if len(cell_w) >= 2 and max(cell_w) > 0 and max(cell_h) > 0:
+        cell_uni = round(min(min(cell_w) / max(cell_w),
+                             min(cell_h) / max(cell_h)), 3)
+
+    def typical_gap(g):
+        runs, cur = [], 0
+        for v in g:
+            if v:
+                cur += 1
+            elif cur:
+                runs.append(cur)
+                cur = 0
+        if cur:
+            runs.append(cur)
+        inner = runs[1:-1] if len(runs) > 2 else runs
+        return int(sum(inner) / len(inner) * (W / float(w))) if inner else 0
+
+    return {
+        "ok": True,
+        "cols": len(col_bands), "rows": len(row_bands),
+        "cells": len(col_bands) * len(row_bands),
+        "band_w": [int(L * W / float(w)) for L in ws],
+        "band_h": [int(L * H / float(h)) for L in hs],
+        "uniform": round(band_uni, 3),
+        "cell_uniform": cell_uni,
+        "cell_w": [int(v) for v in cell_w],
+        "cell_h": [int(v) for v in cell_h],
+        "gap_px": min(typical_gap(col_gaps), typical_gap(row_gaps)),
+        "note": "",
+    }
+
+
 def build_grid(imgs, out, cols=3, tw=320, gap=10):
     thumbs = []
     maxh = 0

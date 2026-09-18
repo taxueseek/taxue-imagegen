@@ -19,10 +19,18 @@ v1.5.0 前验一张图要跑 measure、dewm、手动裁剪放大、人工记账 
   4. 追加一行到 logs/runs.csv（时间/指标/文字判定/verdict），形成模板调优的数据反馈闭环
 
 verdict 三档自动判定（与 SKILL.md §3 评审卡一致）：
-  blocker  量测警告或 --text bad → 允许一次定向重生
-  pending  指标在阈值内但文字未核对（未传 --text）→ 不得计 pass
+  blocker  真错，或 --text bad / 留白挤成一团 / 尺寸与格数不符 → 允许一次定向重生
+  pending  能免费修的（纸白偏暖 → paper_white.py）、文字未核对、水印存疑 → 不得计 pass
   pass     指标在阈值内 且 文字逐字无误
 退出码：0=pass，1=blocker，3=pending。
+
+**为什么纸白偏暖走 pending 而不是 blocker**（2026-09-18）：
+重生改不了这个偏色——坑 33 实测同一提示词两版，纸白均值都是 R237.6/G235.5/B232.0
+（R-B=+5.5），把「三通道数值几乎相等」写进硬底线也纹丝不动。判 blocker 等于
+每次白扣 5–10 积分。正确补救是 `paper_white.py` 确定性归正（免费、只动纸白像素）。
+
+每行 findings 都带 **reason 码**，写进 runs.csv 的 `reason` / `hint` 两列，
+这样「这张图为什么没通过 / 为什么被重出」可以直接统计，不必翻日志猜。
 """
 
 import argparse
@@ -31,13 +39,43 @@ import os
 import sys
 from datetime import datetime
 
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['PIL'])
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(HERE, "logs", "runs.csv")
 
 CSV_COLS = ["ts", "file", "track", "size", "base", "white_pct", "paper_pct",
-            "R-B", "sat", "top_noise", "top_dev", "text", "verdict", "note"]
+            "R-B", "sat", "top_noise", "top_dev", "text", "verdict",
+            "reason", "hint", "note"]
+
+# ── 判据阈值（唯一真源；改动必须同步 sub-skills/verify/evidence.md）──────
+# 每个数值后面都跟着 2026-09-18 用 202 张**已归档成品**实测的触发率
+# （复算工具：scripts/calibrate_thresholds.py）。触发率是选阈值的第一判据：
+# postcheck 判 blocker = 允许一次定向重生 = 再扣 5–10 积分，判据在成品上高频
+# 触发就不是检测器，而是积分黑洞（坑 27 的 top_noise 13/13 全灭就是这么来的）。
+WHITE_BASE_MIN = 240.0   # base ≥ 此值才认为「这张图本该是白的」→ 触发率 4.3%
+PAPER_WARM_RB = 3.0      # 留白区 R-B 达此值＝纸白被渲染成暖白（坑 33）
+TOP_INTRUDE_DEV = 12.0   # 顶部低频结构偏离（仅诊断：成品触发率 64.9%，属风格张力）
+TOP_ZONE_LOW = 50.0      # 顶部相对留白占比低于此值（仅诊断）
+# 类型 B 的「挤成一团」：**只给提示，不判 blocker**。两个候选口径都被实测否掉：
+#   · 旧口径 white%∈[30,65]：min(RGB)>240 在纸底图上恒为 0（measure.py 2026-09-07
+#     已记录该缺陷），在 202 张已归档成品上触发 **82.2%**。
+#   · 候选 paper%（min>base−8）：base 取的是中位数，按定义 ≈50% 的像素 ≥ base，
+#     所以 paper% 恒 ≥50%（实测最小值 50.2）——`paper%<30` 是永远不可能触发的
+#     结构性死判据，看着「0% 触发很干净」，其实是判据本身不会响。
+#   · 候选 near%（min>215，浅色占比）：在 base≥200 的子集（n=83）里 `<40` 仍占 12%，
+#     而本地没有成体系的负样本（真翻车图）来证明它抓的是「挤」而不是「画得满」。
+# 结论：类型 B 的图像侧只报可测提示，拦「挤成一团」的职责在 prompt 侧
+# （可数约束已并入主模板）+ 目检。见 sub-skills/verify/evidence.md 的校准记录。
+CROWD_NEAR_PCT = 40.0    # 浅色占比低于此值 → 提示「可能挤成一团」（仅提示）
+CROWD_BASE_MIN = 200.0   # 只对浅底图提示（暗底/满铺设计不适用留白占比）
+SAT_MAX = 70.0           # 类型 B 平均饱和度上限 → 触发率 3.0%
 
 
 def load_sibling(name, attr):
@@ -48,34 +86,113 @@ def load_sibling(name, attr):
     return getattr(mod, attr)
 
 
-def measure_warnings(row, track, with_top):
-    """与 SKILL.md §5 阈值一致的自动判定。返回警告列表。
+def load_sibling_dict(name):
+    """加载兄弟模块并返回其命名空间，供需要多个入口的模块使用（wm_auto）。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name.replace(".py", ""), os.path.join(HERE, name))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return vars(mod)
 
-    各类型适用阈值不同（2026-09-08 补齐 C/D）：
-      A 海报   R-B / 顶部留白三项
-      B 群像   R-B / 白底 30–65% / 饱和度 ≤70
-      C 包装   灰底棚拍，R-B 阈值不适用（references/packaging-editorial.md §三 规则 8）
-      D 分镜   叙事性暖色豁免，R-B 阈值不适用（references/storyboard.md §五）
+
+def measure_findings(row, track, with_top, expect_cells=None, grid=None):
+    """按类型判定，返回 (blockers, pendings, hints)。
+
+    每项是 `(reason_code, 中文说明)`。三条纪律来自 2026-09-18 用 202 张已归档
+    成品做的校准（scripts/calibrate_thresholds.py 可复算）：
+
+      1. **能免费修的，不许判 blocker。** 纸白偏暖由 `paper_white.py` 确定性归正
+         （坑 33：提示词压不下来、重生只是再花 5–10 积分）→ 走 pending。
+      2. **绝对值阈值必须分场景。** R-B 只在「本该是白」的图上判（base ≥ 240，
+         该子集触发率 4.3%）；纸底/纹理底的暖色是材质色（子集触发率 63%），
+         拿它判 blocker 等于禁止纸底风格——旧口径在成品上触发 46.5%。
+      3. **风格张力不判 blocker。** 顶部留白被母题侵入在 4/9 风格里是设计结果
+         （pitfalls 待解决表明写「不再重出」），旧口径触发 64.9% → 降为诊断。
+         类型 B 的留白占比也换相对口径 paper%（旧 white% 在纸底图上恒为 0，
+         触发 82.2%；paper% < 30 触发 0.0%）。
+
+      A 海报   纸白偏暖（pending）/ 顶部侵入（诊断）
+      B 群像   留白挤成一团 / 饱和度
+      C 包装   灰底棚拍，暖色判据不适用（references/packaging-editorial.md §三 规则 8）
+      D 分镜   叙事性暖色豁免；尺寸是声明值，不符即真错
+      E 多格   格数 / 每格等比例 / 格间净空（references/multigrid-layout.md §三）
     """
-    warns = []
-    if track in ("A", "B") and row["R-B"] >= 3:
-        warns.append(f"泛黄前兆 R-B={row['R-B']:.1f}")
-    if track == "B":
-        if not (30 <= row["white%"] <= 65):
-            warns.append(f"白底 {row['white%']:.0f}% 越界（30–65）")
-        if row["sat"] > 70:
-            warns.append(f"饱和度 {row['sat']:.1f} 偏高")
+    blockers, pendings, hints = [], [], []
+    base = row.get("base", 0)
+
+    # ── 纸白偏暖：能免费修 → pending（不是 blocker）─────────────────
+    if track in ("A", "B") and row["R-B"] >= PAPER_WARM_RB:
+        if base >= WHITE_BASE_MIN:
+            pendings.append(("paper_warm",
+                f"纸白偏暖 R-B={row['R-B']:.1f}（base={base:.0f}，本该是白）——"
+                f"先跑 scripts/paper_white.py 确定性归正（免费、只动纸白像素），不要重生"))
+        else:
+            hints.append(("paper_warm_hint",
+                f"纸底偏暖 R-B={row['R-B']:.1f}（base={base:.0f}）属材质色；"
+                f"若要更中性可跑 paper_white.py"))
+
     if with_top and track == "A":
-        if row.get("top_R-B", 0) >= 3:
-            warns.append(f"顶部留白发黄 top_R-B={row['top_R-B']:.1f}")
-        # top_noise 不再作为 blocker（2026-09-09 实测修正）：
-        # 13/13 张真实海报 top_noise 全部 ≥29（阈值 6 全灭，连用户已验收的
-        # charming-girl-poster.png=50.1 也拦），纸纹/网点/网点化网点本身就把 std
-        # 顶上去 —— 阈值不具区分力，只会制造假 blocker（postcheck 判 blocker =
-        # 允许一次定向重生 = 再扣 5-10 积分）。降级为诊断值打印，不参与判定。
-        if row.get("top_dev", 0) >= 12:
-            warns.append(f"顶部被内容侵入 top_dev={row['top_dev']:.1f}")
-    return warns
+        if row.get("top_R-B", 0) >= PAPER_WARM_RB and base >= WHITE_BASE_MIN \
+                and not any(c == "paper_warm" for c, _ in pendings):
+            # 与上面是**同一件事**（留白偏暖），同一张图只报一条，避免并列两条
+            # 让读者不知道信哪条（2026-09-18）
+            pendings.append(("paper_warm",
+                f"顶部留白偏暖 top_R-B={row['top_R-B']:.1f}（base={base:.0f}）——"
+                f"先跑 scripts/paper_white.py，不要重生"))
+        if row.get("top_dev", 0) >= TOP_INTRUDE_DEV or row.get("top_zone%", 100) < TOP_ZONE_LOW:
+            hints.append(("top_intruded",
+                f"顶部留白被内容侵入（dev={row.get('top_dev', 0):.1f} "
+                f"zone%={row.get('top_zone%', 0):.1f}）——属风格张力，不判 blocker；"
+                f"目检后自行取舍（pitfalls 待解决表）"))
+
+    if track == "B":
+        if base >= CROWD_BASE_MIN and row.get("near%", 100) < CROWD_NEAR_PCT:
+            hints.append(("crowded_hint",
+                f"浅色（留白）只占 {row.get('near%', 0):.0f}%（<{CROWD_NEAR_PCT:.0f}）"
+                f"——可能挤成一团，请目检；拦它的正手在 prompt 侧的可数约束"))
+        if row["sat"] > SAT_MAX:
+            blockers.append(("sat_blown", f"饱和度 {row['sat']:.1f} > {SAT_MAX:.0f}"))
+
+    # 类型 D：尺寸是声明值，不符即真错（storyboard.md §五「精确输出 1024x1792」）
+    if track == "D" and row["size"] != "1024x1792":
+        blockers.append(("size_mismatch",
+                         f"尺寸不符：{row['size']}，类型 D 声明 1024x1792（4:7）"))
+
+    if track == "E":
+        hard, diag = grid_warnings(grid, expect_cells)
+        blockers += [("cell_count", m) for m in hard]
+        hints    += [("grid_diag", m) for m in diag]
+
+    return blockers, pendings, hints
+
+
+def grid_warnings(grid, expect_cells=None):
+    """类型 E 的网格结构判定。返回 (硬警告, 诊断行)。
+
+    判定口径的诚实边界（2026-09-12）：
+      - 格数不符 = **硬警告**。fill_meta 已在 prompt 侧校验「格数=清单条数」，
+        图像侧再对不上就是「说的和画的不是一回事」，属真错。
+        仅在给了 --expect-cells 时才判，避免猜用户声明了几格。
+      - 每格尺寸不一致 = **诊断行**，不判 blocker。阈值 0.90 来自本机合成基准
+        （一致网格 cell_uniform=1.0，某格窄 60px=0.825、矮 30%=0.70），
+        尚未在真实多格产出上重标，故只报不拦。
+      - 网格解析失败 = **诊断行**。「无缝隙、边框像素对齐」是合法 E 变体，
+        此时本就解析不出净空，误判成 blocker 等于禁止合法写法。
+    """
+    hard, diag = [], []
+    if not grid or not grid.get("ok"):
+        diag.append(f"网格未解析（{grid.get('note', '') if grid else '未量测'}）："
+                    f"可能是「无缝隙」合法变体，请目检格数与间隔")
+        return hard, diag
+    if expect_cells and grid["cells"] != expect_cells:
+        hard.append(f"格数不符：图上 {grid['cells']} 格（{grid['rows']}行×{grid['cols']}列），"
+                    f"声明 {expect_cells} 格")
+    cu = grid.get("cell_uniform")
+    if cu is not None and cu < 0.90:
+        diag.append(f"每格尺寸不一致 cell_uniform={cu:.2f}（<0.90，待真实产出重标）")
+    if not grid.get("gap_px"):
+        diag.append("格间未检出净空（可能是无缝隙变体，也可能是各格糊成一片）")
+    return hard, diag
 
 
 def export_textband(path, im):
@@ -89,13 +206,15 @@ def export_textband(path, im):
     return out
 
 
-def append_log(row, track, text, verdict, note, no_log=False):
+def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False,
+               log_path=None):
     """追加一行运行记录。no_log=True 时跳过（跑测试/验证不污染生产记账）。"""
     if no_log:
         return
-    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-    new = not os.path.exists(LOG_PATH)
-    with open(LOG_PATH, "a", newline="", encoding="utf-8") as f:
+    log_path = log_path or LOG_PATH
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    new = not os.path.exists(log_path)
+    with open(log_path, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if new:
             w.writerow(CSV_COLS)
@@ -105,7 +224,7 @@ def append_log(row, track, text, verdict, note, no_log=False):
             f"{row['R-B']:.1f}", f"{row['sat']:.1f}",
             f"{row.get('top_noise', 0):.1f}" if "top_noise" in row else "",
             f"{row.get('top_dev', 0):.1f}" if "top_dev" in row else "",
-            text, verdict, note,
+            text, verdict, reason, hint, note,
         ])
 
 
@@ -113,52 +232,101 @@ def process(path, args):
     metrics = load_sibling("measure.py", "metrics")
     im, row = metrics(path, args.top and args.track == "A")
     row["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    warns = measure_warnings(row, args.track, args.top and args.track == "A")
+    blockers, pendings, hints = measure_findings(
+        row, args.track, args.top and args.track == "A")
+
+    # 类型 E：网格结构量测（格数 / 每格等比例 / 格间净空）
+    grid = None
+    if args.track == "E":
+        grid_metrics = load_sibling("measure.py", "grid_metrics")
+        grid = grid_metrics(path)
+        # 判定在 measure_findings 里做（要拿到 expect_cells），这里只量测
+        b2, p2, h2 = measure_findings(row, "E", False, args.expect_cells, grid)
+        blockers += b2; pendings += p2; hints += h2
 
     # 文字带裁片：A 有文字带必导；C 有品牌堆叠字，同样需要目检
     band = None
     if args.track in ("A", "C"):
         band = export_textband(path, im)
 
+    # 水印：自动识别 → 命中才动手（v1.13 起默认 auto，见 scripts/wm_auto.py）
+    # 为什么不再是无脑 --dewm：水印存在与否由宿主与会员状态决定，干净图上动手
+    # 等于主动改坏画面。auto 模式先识别，且要求 amp 与 R² 双条件达标才动手。
     dewm_out = None
     dewm_tag = ""
-    if args.dewm:
-        # v1.8 起默认 v10（v9 + 平底自适应融合）：平色底上 v9 会留肉眼可见的
-        # 字形轮廓，而 audit 的 amp 判不出来（形状失配 → R²≈0 被当纹理放过）。
-        remove_watermark = load_sibling("dewm_v10.py", "remove_watermark")
-        import numpy as np
-        import cv2
-        data = np.fromfile(path, dtype=np.uint8)
-        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
-        if img is None:
-            warns.append("dewm: 读图失败")
-        else:
-            out_img, st = remove_watermark(img)
-            if st.get("skipped"):
-                # 「不可解」是正确结论而非缺陷：近白底上水印不可见也不可解，
-                # 硬解只会引入噪声。记 info 不记 blocker（2026-09-08）。
-                print(f"  ℹ️ 去水印跳过: {st['skipped']}")
+    wm_state = None
+    if args.wm != "off":
+        wm_auto = load_sibling_dict("wm_auto.py")
+        if args.wm == "force":
+            wm = wm_auto["remove_and_verify"](path)
+            if wm["attempted"] and wm["out_path"]:
+                dewm_out = wm["out_path"]
+                a, b = wm["before"], wm["after"]
+                dewm_tag = (f"amp {a['amp']:.2f}→{b['amp']:.2f} "
+                            f"R² {a['r2']:.2f}→{b['r2']:.2f}")
+                if not wm["verified"]:
+                    hints.append(("wm_failed", f"去水印复检未通过：{wm['note']}"))
             else:
-                dewm_out = os.path.splitext(path)[0] + "_dewm.png"
-                dewm_tag = (f"k={st['k']:.2f} r2={st['r2']:.2f} "
-                            f"flat={'Y' if st.get('flat') else 'N'}"
-                            f"(std={st.get('flat_std', 0):.1f})")
-                ok, buf = cv2.imencode(".png", out_img)
-                if ok:
-                    buf.tofile(dewm_out)
+                hints.append(("wm_skipped", f"去水印未执行：{wm['note']}"))
+            wm_state = "forced"
+        else:
+            d = wm_auto["detect"](path)
+            if d["action"] == "skip":
+                wm_state = "none"
+                hints.append(("wm_none", f"水印：无可见水印（{d['reason']}），未改动画面"))
+            elif d["action"] == "manual":
+                # 存疑分流（2026-09-12 实测修正）：
+                #   R² 达标 → 确实存在形状吻合的残留，是真存疑 → 记 pending，
+                #             正确补救是 pick_wm / 云端 erase，不是重生
+                #   R² 不足 → audit_wm 文档写明这多半是高频纹理误报（格边、网点、
+                #             马赛克），**不拦 pass**。让误报逼出返工，正是 top_noise
+                #             那条教训（假 blocker 每张白扣 5-10 积分）
+                if d["r2"] >= wm_auto["AUTO_R2_THR"]:
+                    wm_state = "manual"
+                    hints.append(("wm_manual",
+                                   f"水印存疑，未自动处理：{d['reason']}；"
+                                   f"建议 pick_wm.py 四版选优或云端 erase"))
+                else:
+                    wm_state = "none"
+                    hints.append(("wm_texture",
+                                   f"水印区有非水印形状的残差（amp={d['amp']:.2f} "
+                                   f"R²={d['r2']:.2f}）：判为纹理/格边误报，不拦交付"))
+            else:
+                wm = wm_auto["remove_and_verify"](path)
+                if wm["out_path"]:
+                    dewm_out = wm["out_path"]
+                    a, b = wm["before"], wm["after"]
+                    dewm_tag = (f"amp {a['amp']:.2f}→{b['amp']:.2f} "
+                                f"R² {a['r2']:.2f}→{b['r2']:.2f}")
+                    wm_state = "removed" if wm["verified"] else "failed"
+                    hints.append(("wm_removed", wm["note"]))
+                else:
+                    wm_state = "failed"
+                    hints.append(("wm_failed", wm["note"]))
 
     # verdict 三档（对齐 SKILL.md §3 评审卡）：
     #   blocker    量测越界 / 文字判 bad  → 允许一次定向重生
-    #   pending    文字未核对（unverified）→ 不得计 pass，需逐字目检后回填
-    #   pass       指标在阈值内 且 文字逐字无误
+    #   pending    文字未核对 或 水印待处理 → 不得计 pass，需处理后回填
+    #   pass       指标在阈值内 且 文字逐字无误 且 水印已清零
     text = args.text or "unverified"
-    if warns or text == "bad":
+    if text == "bad":
+        blockers.append(("text_bad", "文字逐字核对不通过（--text bad）"))
+    if blockers:
         verdict = "blocker"
     elif text == "unverified":
+        pendings.append(("text_unverified", "文字未核对（未传 --text），不得计 pass"))
+        verdict = "pending"
+    elif wm_state in ("manual", "failed"):
+        pendings.append((f"wm_{wm_state}", "水印存疑或去除失败，需处理后回填"))
+        verdict = "pending"
+    elif pendings:
         verdict = "pending"
     else:
         verdict = "pass"
-    append_log(row, args.track, text, verdict, args.note or "", no_log=args.no_log)
+    reason = ",".join(c for c, _ in blockers) or ",".join(c for c, _ in pendings)
+    hint = ",".join(c for c, _ in hints)
+    append_log(row, args.track, text, verdict, args.note or "", reason, hint,
+               no_log=args.no_log, log_path=args.log_path)
 
     name = row["file"]
     print(f"{name}  white%={row['white%']:.1f} paper%={row['paper%']:.1f} "
@@ -171,10 +339,18 @@ def process(path, args):
               "判顶部是否真被画脏看 lf_std/dark% 并目检裁片)")
     if band:
         print(f"  目检裁片(2x): {band}")
+    if grid and grid.get("ok"):
+        print(f"  网格: {grid['rows']}行×{grid['cols']}列 = {grid['cells']}格  "
+              f"格间净空={grid['gap_px']}px  "
+              f"格尺寸一致性={grid.get('cell_uniform')}")
     if dewm_out:
-        print(f"  去水印(v10): {dewm_out}  {dewm_tag}")
-    for wmsg in warns:
-        print(f"  ⚠️ {wmsg}")
+        print(f"  去水印: {dewm_out}  {dewm_tag}")
+    for code, msg in hints:
+        print(f"  · [{code}] {msg}")
+    for code, msg in blockers:
+        print(f"  ❌ [{code}] {msg}")
+    for code, msg in pendings:
+        print(f"  ⏳ [{code}] {msg}")
     print(f"  verdict={verdict} text={text} → runs.csv")
     return verdict
 
@@ -182,15 +358,24 @@ def process(path, args):
 def main():
     ap = argparse.ArgumentParser(description="出图后一次调用：量测+裁片+去水印+记账")
     ap.add_argument("images", nargs="+")
-    ap.add_argument("--track", choices=["A", "B", "C", "D"], default="A",
-                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，D=叙事分镜")
+    ap.add_argument("--track", choices=["A", "B", "C", "D", "E"], default="A",
+                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，D=叙事分镜，E=多格排版")
     ap.add_argument("--top", action="store_true", help="加测顶部留白（类型 A 必用）")
-    ap.add_argument("--dewm", action="store_true", help="顺带 alpha 反解去水印，输出 _dewm.png")
+    ap.add_argument("--wm", choices=["auto", "force", "off"], default="auto",
+                    help="水印处理：auto=自动识别并命中才去（默认），force=强制去，off=不动")
+    ap.add_argument("--dewm", action="store_true",
+                    help="等价 --wm force（保留旧参数；需要无条件去水印时用）")
+    ap.add_argument("--expect-cells", type=int, default=None,
+                    help="类型 E 声明格数，用于校验「说的和画的」是否一致（如 9 / 16）")
     ap.add_argument("--text", choices=["ok", "bad"], help="文案逐字目检结论（无视觉时先留空，明示用户核对）")
     ap.add_argument("--note", help="备注（模板版本、场景等）")
     ap.add_argument("--no-log", action="store_true",
                     help="不写 runs.csv（跑测试/验证时用，避免污染生产记账）")
+    ap.add_argument("--log-path", default=None,
+                    help="覆盖 runs.csv 位置（默认 scripts/logs/runs.csv；测试/CI 用临时文件）")
     args = ap.parse_args()
+    if args.dewm:
+        args.wm = "force"   # 旧参数语义保留，避免既有文档/脚本失效
 
     verdicts = []
     for p in args.images:
@@ -205,8 +390,8 @@ def main():
         print("\n❌ blocker —— 按三档评审卡：才允许一次定向重生，只改一项")
         sys.exit(1)
     if any(v == "pending" for v in verdicts):
-        print("\n⏳ pending —— 指标在阈值内，但文字尚未逐字核对；"
-              "目检后回填 --text ok/bad，pending 不得当作通过")
+        print("\n⏳ pending —— 指标在阈值内，但仍有未结项（文字未逐字核对，"
+              "或水印存疑待 pick_wm / 云端处理）；处理完再回填，pending 不得当作通过")
         sys.exit(3)
     print("\n✅ pass（指标在阈值内 + 文字逐字无误）")
 

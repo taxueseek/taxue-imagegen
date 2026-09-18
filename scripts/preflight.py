@@ -6,9 +6,10 @@
 四成左右的坑可以在提交前用文本规则拦住——把验收前置到提交前，
 单张直出才有可能。每条规则注释标明对应的坑号（见 references/pitfalls.md）。
 
-当前覆盖：pitfalls.md 共 27 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
-其余 16 个属像素级或工程级（去水印、并行撞名、路径名等），需靠 postcheck / audit_wm 等运行时手段。
-11/27 ≈ 41%，即**近六成的坑在提交前拦不住**——preflight 是已知坑的防线，不是完备证明。
+当前覆盖：pitfalls.md 共 34 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
+其余 22 个属像素级或工程级（去水印、并行撞名、路径名、纸白偏色等），需靠 postcheck / audit_wm /
+paper_white 等运行时手段。
+11/34 ≈ 32%，即**近七成的坑在提交前拦不住**——preflight 是已知坑的防线，不是完备证明。
 新翻车样本要回写 HUE_WORDS 等规则表，否则同类风险会静默放行。
 
 用法：
@@ -107,8 +108,19 @@ SIZE_TOKEN = re.compile(r"\b(\d{3,4})\s*[x×]\s*(\d{3,4})\b")
 SLOT_BRACE = re.compile(r"\{[^{}\n]{1,40}\}")
 SLOT_CN = re.compile(r"【[^】\n]{1,40}】")
 
+# 类型 A/B/D 模板用【】作**段落标题**而非槽位（见 references/poster-v5.md §一）。
+# 2026-09-18 实测：A 类 prompt 100% 被误报「残留未填槽位 7 个」，把真 BLOCK 淹没。
+SECTION_TITLES = {"【三项输入】", "【画面】", "【三组文案】", "【负向】", "【观看路径】"}
+
+
+def is_section_title(tok):
+    """类型 A 模板的段落标题（非槽位），不该被判为残留槽位。"""
+    return (tok in SECTION_TITLES
+            or tok.startswith("【硬底线")
+            or tok.startswith("【软引导"))
+
 # 各类型适用的规则（避免用 A 的规则误判 D 的结构标签，反之亦然）
-TRACKS = ("A", "B", "C", "D")
+TRACKS = ("A", "B", "C", "D", "E")
 
 
 def clauses(text):
@@ -144,7 +156,15 @@ def check(text, track):
             break
 
     # 坑 5 · 文案值带引号
+    # 2026-09-12：模板里用「」声明文案是常规写法（类型 A/C/E 均如此）。只要全文
+    # 任何一处明写了「不出现引号字符」，即视为已声明，放行——与坑 10 的
+    # manpu_decl「主动放弃即正确形态」同一模式。未声明时照旧拦截。
+    no_quote_decl = bool(re.search(
+        r"(不|无|不要|不得|禁|没有)[^。\n]{0,12}引号"
+        r"|引号[^。\n]{0,8}(不|不出现在画面|不画)", text))
     for line in text.splitlines():
+        if no_quote_decl:
+            break
         if re.search(r"标题|短句|文案|title", line, re.I) and any(q in line for q in QUOTE_CHARS):
             out.append(("BLOCK", "坑5",
                         f"文案行含引号字符（会被原样画出）：{line.strip()[:50]}"))
@@ -176,7 +196,11 @@ def check(text, track):
                     "换可数约束（数量下限 + 最大 ≤ 1/4 画幅 + 最小 ≥ 1/12）"))
 
     # 坑 11 · 竖排多词英文（类型 A/C 文案型；D 的 STYLE/CHARACTER LOCK 是结构标签，跳过）
-    if track in ("A", "C") and VERTICAL.search(text) and MULTI_WORD_EN.search(text):
+    # 2026-09-18 修假阳性：类型 A 模板自带条件句「主标题若竖排且多于一个词」，
+    # 主标题只有 1 个词时该条款并不生效，却让 VERTICAL 字面命中而误报 BLOCK。
+    # 检测前先剔除「若…竖排」这类条件子句。
+    vertical_text = re.sub(r"若[^。\n]{0,20}?竖排", "", text)
+    if track in ("A", "C") and VERTICAL.search(vertical_text) and MULTI_WORD_EN.search(text):
         out.append(("BLOCK", "坑11",
                     "竖排 + 多词英文：末字母会被复制到下一词首 —— "
                     "逐字母声明总数或拆成独立竖列（修复写法见坑 11）"))
@@ -202,7 +226,13 @@ def check(text, track):
                     "风格词可能把底色压成浅灰（坑 9，写法待单因素验证）"))
 
     # 尺寸实测表
+    # 2026-09-12：单格/单帧尺寸（如精灵图「单格 128×128」）不是输出画布尺寸，
+    # 跳过该子句，避免误报（类型 E 多格排版实测）。
+    CELL_SIZE_CTX = re.compile(r"单格|每格|单帧|每帧|frame|cell", re.I)
     for m in SIZE_TOKEN.finditer(text):
+        line = text[text.rfind("\n", 0, m.start()) + 1:text.find("\n", m.end())]
+        if CELL_SIZE_CTX.search(line):
+            continue
         size = f"{m.group(1)}x{m.group(2)}"
         if size not in TESTED_SIZES:
             out.append(("WARN", "尺寸",
@@ -211,7 +241,7 @@ def check(text, track):
             break
 
     # 坑 16：中文 prompt 长度阈值（2026-09-07 实测 150 字过 / 430 字挂，精确阈值未定位）
-    if track in ("A", "C"):
+    if track in ("A", "C", "E"):
         cn_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
         if cn_chars > 430:
             out.append(("WARN", "坑16",
@@ -219,9 +249,14 @@ def check(text, track):
                         "遇 internal server error 先按坑 16 压缩"
                         "（历史完整模板亦有通过案例，阈值未定位）"))
 
-    # 残留槽位：类型 A/B 用 {}，类型 C 用【】——两种都拦
+    # 坑 24 · 残留槽位：类型 A/B/D 用 {}，类型 C/E 用【】——两种都拦
     # （2026-09-08 实测：C 模板 17 个【】槽位此前被静默放行）
-    leftover = SLOT_BRACE.findall(text) + SLOT_CN.findall(text)
+    # 2026-09-18：A/B/D 的【】是模板段落标题（见 is_section_title），须豁免，否则 100% 误报
+    if track in ("C", "E"):
+        cn_leftover = SLOT_CN.findall(text)
+    else:
+        cn_leftover = [t for t in SLOT_CN.findall(text) if not is_section_title(t)]
+    leftover = SLOT_BRACE.findall(text) + cn_leftover
     if leftover:
         out.append(("BLOCK", "槽位",
                     f"残留未填槽位 {len(leftover)} 个：{leftover[:5]} —— 用 fill_meta.py 填齐或人工定值"))

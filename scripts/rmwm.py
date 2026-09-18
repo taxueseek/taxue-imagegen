@@ -34,8 +34,14 @@ import os
 import shutil
 import sys
 
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['cv2', 'numpy'])
 
 # 水印修复框（相对整图尺寸的比例，2026-09-07 在 1024x1280 / 1024x1536 上实测校准）
 # 覆盖 ~111x51px 的水印本体 + 安全余量

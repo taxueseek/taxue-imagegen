@@ -16,7 +16,7 @@
 
 Four types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, or storyboard.
 
-[![Version](https://img.shields.io/badge/VERSION-1.11.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.19.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 Runs only inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview). Generation goes through its ImageGen; slot fill and verification are scripts. The other three skills in the family ship prompts you can copy anywhere; this one ships a pipeline that lives in WorkBuddy.
 
@@ -169,6 +169,7 @@ CI: [`.github/workflows/validate.yml`](./.github/workflows/validate.yml).
 
 ## Changelog
 
+- **v1.12.0** (2026-09-12): New type E "multi-grid layout" (sprite sheets / series posters / stamp sets / character-bible sheets), where every cell is an independent finished piece bound by one shared spec; `fill_meta.py E` (11 slots + cell-count vs cell-list check); preflight no longer mistakes a cell size for the output canvas size. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.11.1** (2026-09-09): Fix `measure.py` crash on `%`, fake-green verification tests, missing hue words in preflight. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.11.0** (2026-09-09): Optional cloud post-processing (propose first); dual-route watermark removal.
 - **v1.10.0** (2026-09-08): Add Type D "Narrative Storyboard" — a dual LOCK anchor keeps one character consistent across 9 frames (`references/storyboard.md` + `build_storyboard.py --case cyber|ink`); `fill_meta.py C` turns packaging mockups from hand-copying a 17-slot template into mechanical slot fill; fixes four classes of low-level bugs that actively misled generation (preflight word boundaries falsely blocking 9/9 prompts, `【】` slots undetected, postcheck logging unverified text as pass, overwrite guard bypassed by case/hard links); adds 42 assertion-based regression tests. Default watermark removal stays v10 — v11/v12 measured worse overall and are demoted to optional for dark-region cases.

@@ -11,6 +11,31 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 echo "== taxue-imagegen test suite =="
 
+# ── 选解释器 ────────────────────────────────────────────────────────────
+# 测试需要 cv2 + numpy + PIL。裸 `python3` 不保证带它们：本机 PATH 首选是
+# managed 3.13.12（无 cv2），会让 3 条本可通过的检查**假失败**，把人往错方向带。
+# 顺序：显式 $PYTHON → managed venv → PATH 里的 python3 → 常见系统路径。
+pick_python() {
+    local cand
+    for cand in "${PYTHON:-}" \
+                "$HOME/.workbuddy/binaries/python/envs/default/bin/python3" \
+                "$(command -v python3 || true)" \
+                /opt/homebrew/bin/python3 \
+                /usr/bin/python3; do
+        [ -n "$cand" ] && [ -x "$cand" ] || continue
+        if "$cand" -c "import cv2, numpy, PIL" >/dev/null 2>&1; then
+            printf '%s' "$cand"; return 0
+        fi
+    done
+    return 1
+}
+if ! PYBIN="$(pick_python)"; then
+    echo "FAIL: 找不到同时具备 cv2 / numpy / PIL 的 python3" >&2
+    echo "      可显式指定：PYTHON=/path/to/python3 bash scripts/run_tests.sh" >&2
+    exit 1
+fi
+echo "python: $PYBIN"
+
 pass=0
 fail=0
 skip=0
@@ -23,7 +48,7 @@ echo ""
 echo "[1/8] import-check all scripts"
 ok=1
 for f in scripts/*.py; do
-    if python3 -c "
+    if "$PYBIN" -c "
 import importlib.util, pathlib
 p = pathlib.Path('$f')
 spec = importlib.util.spec_from_file_location(p.stem, p)
@@ -40,17 +65,46 @@ if [ "$ok" -eq 1 ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
 
 echo ""
 echo "[2/8] SKILL.md front-matter"
-if python3 - <<'PY'
-import re, sys
+if "$PYBIN" - <<'PY'
+import sys
+# 【不要改回固定窗口】历史上这里是 f.read(2048)，撑爆后报「missing front-matter」——
+# 看着像 YAML 坏了，其实是长度超窗，两次把人引向错误方向（2048→4096 又复发一次）。
+# 闭合符位置与 front-matter 长度无关，按行定位即可，**永不需要调大常数**。
 with open("SKILL.md", encoding="utf-8") as f:
-    head = f.read(2048)
-m = re.match(r"^---\n(.*?)\n---\n", head, re.S)
-if not m:
-    print("FAIL: SKILL.md missing front-matter"); sys.exit(1)
-fm = m.group(1)
+    lines = f.read().splitlines()
+if not lines or lines[0].strip() != "---":
+    print("FAIL: SKILL.md missing front-matter (首行不是 ---)"); sys.exit(1)
+end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == "---"), None)
+if end is None:
+    print("FAIL: SKILL.md missing front-matter (找不到闭合 ---)"); sys.exit(1)
+fm = "\n".join(lines[1:end])
+print(f"OK: front-matter {len(fm)} 字符 / {end - 1} 行（长度无关定位）")
 for key in ("name:", "description:"):
     if key not in fm:
         print(f"FAIL: SKILL.md front-matter missing {key}"); sys.exit(1)
+
+# ── YAML 合法性（2026-09-18 新增）──────────────────────────────────
+# 实测教训：description 的折叠块里只要有一行**顶格**（列 0），块标量就提前结束，
+# yaml.safe_load 直接 ScannerError —— 而宿主是用 yaml.parse 读 front-matter 的。
+# 老版本正是这样：触发词段有两行顶格，整个 description 解析不下来，
+# 而原来的检查只找 "description:" 这个字符串，全绿放行。所以这里必须真解析。
+try:
+    import yaml
+except ImportError:
+    print("SKIP: 未装 PyYAML，跳过 YAML 合法性检查（CI 会装；本地可 pip install pyyaml）")
+else:
+    try:
+        doc = yaml.safe_load(fm)
+    except Exception as e:
+        print(f"FAIL: front-matter 不是合法 YAML → {type(e).__name__}: {str(e)[:160]}")
+        sys.exit(1)
+    if not isinstance(doc, dict) or not isinstance(doc.get("description"), str):
+        print("FAIL: front-matter 解析后 description 不是字符串（折叠块可能提前结束）")
+        sys.exit(1)
+    print(f"OK: front-matter 是合法 YAML，description 解析出 {len(doc['description'].encode())} B")
+
+# 体积预算不在本步骤做：单一真源在 scripts/test_regressions.py 的
+# SURFACE_BUDGETS（[4/8] 会跑到），避免同一组数字两处维护。
 print("OK: SKILL.md front-matter valid")
 PY
 then
@@ -61,7 +115,7 @@ fi
 
 echo ""
 echo "[3/8] preflight smoke test on Track A template"
-if PYTHONPATH=scripts python3 - <<'PY'
+if PYTHONPATH=scripts "$PYBIN" - <<'PY'
 import re, sys, subprocess, tempfile, os
 text = open("references/poster-v5.md", encoding="utf-8").read()
 m = re.search(r"^```\n(.*?)^```$", text, re.S | re.M)
@@ -97,7 +151,7 @@ fi
 
 echo ""
 echo "[4/8] regression tests (assertion-based, per fixed bug)"
-if python3 scripts/test_regressions.py; then
+if "$PYBIN" scripts/test_regressions.py; then
     pass=$((pass+1))
 else
     fail=$((fail+1))
@@ -107,11 +161,12 @@ echo ""
 echo "[5/8] critical files exist"
 missing=""
 for f in scripts/fill_meta.py scripts/postcheck.py scripts/preflight.py \
-         scripts/measure.py scripts/dewm_v10.py scripts/dewm_io.py \
+         scripts/measure.py scripts/wm_auto.py scripts/dewm_v10.py scripts/dewm_io.py \
          scripts/test_regressions.py \
          references/poster-v5.md references/crowd-illustration.md \
          references/packaging-editorial.md references/storyboard.md \
-         references/pitfalls.md references/size-and-params.md; do
+         references/pitfalls.md references/size-and-params.md \
+         sub-skills/verify/SKILL.md sub-skills/verify/evidence.md; do
     if [ ! -f "$f" ]; then
         missing="$missing $f"
     fi

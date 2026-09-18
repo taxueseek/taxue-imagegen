@@ -23,8 +23,14 @@ dewm2.py —— 逐像素·带校验的反向 Alpha 去水印（零模型 / 经�
 """
 import argparse, os, sys, glob
 
-import numpy as np
-import cv2
+try:
+    import numpy as np
+    import cv2
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['numpy', 'cv2'])
 
 
 def parse_colors(s):

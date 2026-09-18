@@ -18,8 +18,14 @@ rmwm.py 的 top-hat 掩膜只检暗于背景的字形；白平衡提亮后或白
 --out 传文件名时只允许单张输入（多张会互相覆盖，直接报错）。
 """
 import argparse, glob, os, sys
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['cv2', 'numpy'])
 
 DEFAULT_BOX = (820, 1430, 1024, 1536)  # 1024x1536 参考坐标
 

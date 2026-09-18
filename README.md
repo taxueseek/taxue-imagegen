@@ -16,7 +16,7 @@
 
 四种类型、四种工作流——把一句话做成稳定的封面、群像、包装样机或分镜。
 
-[![Version](https://img.shields.io/badge/VERSION-1.11.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.19.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑通。出图走它的 ImageGen，填槽和验收由脚本完成。同系列另外三个技能交的是提示词本身，复制到哪都能用；本技能交的是一条跑在 WorkBuddy 里的流水线。
 
@@ -157,6 +157,7 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 
 ## 更新记录
 
+- **v1.12.0**（2026-09-12）：新增类型 E「多格排版」（精灵图 / 系列海报 / 邮票组 / 角色设定表），每格独立成品靠统一规格串组；fill_meta 加 E（11 槽 + 格数与清单条数一致性校验）；preflight 修「单格尺寸被当成输出画布尺寸」误报。详见 [CHANGELOG.md](./CHANGELOG.md)。
 - **v1.11.1**（2026-09-09）：修 `measure.py` 因百分号崩溃、验收测试假绿、预检色相词缺口。详见 [CHANGELOG.md](./CHANGELOG.md)。
 - **v1.11.0**（2026-09-09）：可选云端后处理（先建议后启用）；去水印按图源分流。
 - **v1.10.0**（2026-09-08）：新增类型 D 叙事分镜；类型 C 改机械填槽；42 条回归测试。

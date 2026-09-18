@@ -112,5 +112,18 @@ $PY ~/.workbuddy/skills/taxue-imagegen/scripts/rmwm.py *.png --out DIR  # 批量
   3. **纸纹移植**：同图同 y 带找无暗像素的干净源块，`目标 median31 低频 + 源块高频`，边缘 10px 羽化融合。
   纯 PIL+numpy+cv2 即可，无需额外依赖。⚠️ 脚本里 `p.replace("_nw3.png", …)` 这类基于不存在的子串做命名会静默覆写原文件，输出名要显式拼接。
 - ⚠️ 合规：水印是 AI 生成内容标识，公开发布请走平台 AI 声明，别去标识当原创。
-- 出图后如需归档：`cd ~/Pictures/WorkBuddy && python3 _tools/sync_images.py --apply`
+- 出图后如需归档：先 `find` 定位归档脚本（本机在成品目录下的 `_tools/sync_images.py`），确认存在再 `--apply`；不要把某个人的目录结构当成通用约定
   （按日期分目录、同主题合并、SHA-256 去重、幂等可反复跑）。
+
+## 换模型 / 换环境：要重标什么
+
+阈值与模板都带「在 hunyuan-image 上实测」的前提，换模型（GPT Image 2 / Grok Imagine 2 /
+Nano Banana 2 / Seedream 5.0 Pro）或换宿主（豆包/即梦想换尺寸见 `references/jimeng-env.md`）
+之后**不要直接沿用数字**，重标两件事：
+
+| 要重标的东西 | 工具 | 纪律 |
+|---|---|---|
+| **验收阈值**（R-B / 留白 / 饱和度 / 水印门） | `scripts/calibrate_thresholds.py <成品目录>` | 用**新模型下你愿意留下的成品**当正样本，先看每条判据的触发率；触发率高的只能当诊断值，不许判 blocker（依据见 `sub-skills/verify/evidence.md` §4） |
+| 水印 α 模板（仅 WorkBuddy 自有水印需要） | 本机维护资产，见技能目录下的 `_research/`，**未随技能发布** | 只在换水印版式时才需要；它不是本技能的一部分 |
+
+先出 5–10 张拿数据，再改数字；改完把样本量与两组分布写进 `evidence.md`。
