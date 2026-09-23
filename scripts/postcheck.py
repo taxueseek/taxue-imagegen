@@ -101,15 +101,6 @@ def _sibling(name):
     return mod
 
 
-def load_sibling(name, attr):
-    return getattr(_sibling(name), attr)
-
-
-def load_sibling_dict(name):
-    """加载兄弟模块并返回其命名空间，供需要多个入口的模块使用（wm_auto）。"""
-    return vars(_sibling(name))
-
-
 def measure_findings(row, track, with_top, expect_cells=None, grid=None):
     """按类型判定，返回 (blockers, pendings, hints)。
 
@@ -311,7 +302,7 @@ def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False
 
 
 def process(path, args):
-    metrics = load_sibling("measure.py", "metrics")
+    metrics = _sibling("measure.py").metrics
     with_top = bool(args.top and args.track == "A")
     im, row = metrics(path, with_top)
     row["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -323,7 +314,7 @@ def process(path, args):
     # 明明解析成功也照报——实测 3 行×1 列已正确识别，控制台仍并列打出
     # 「网格未解析（未量测）」，runs.csv 里也稳定出现两个 `grid_diag`。
     # 诊断里混进一条必然为假的行，代价是读者开始不信诊断。
-    grid = load_sibling("measure.py", "grid_metrics")(path) if args.track == "E" else None
+    grid = _sibling("measure.py").grid_metrics(path) if args.track == "E" else None
     blockers, pendings, hints = measure_findings(
         row, args.track, with_top, args.expect_cells, grid)
 
@@ -339,7 +330,7 @@ def process(path, args):
     dewm_tag = ""
     wm_state = None
     if args.wm != "off":
-        wm_auto = load_sibling_dict("wm_auto.py")
+        wm_auto = vars(_sibling("wm_auto.py"))
         if args.wm == "force":
             wm = wm_auto["remove_and_verify"](path)
             if wm["attempted"] and wm["out_path"]:
@@ -441,6 +432,38 @@ def process(path, args):
     return verdict
 
 
+def exit_policy(verdicts, tool_errors, skipped):
+    """跑完之后该以什么码退出 —— 这条优先级是本脚本对外唯一的契约，收在一处。
+
+    原先散成五个 `if` 各自 print 一段文案，读者要核对「4 和 3 谁优先」得来回跳，
+    而每次新增一类未判定状态（这轮就新增了 tool_errors 与 skipped）都要在 5 处插桩。
+    现在它是纯函数：给定三类结果，返回 (退出码, 结语)。调用方只剩 sys.exit 一行。
+
+    优先级（高 → 低）：
+      2/4  一张都没判定出来：工具/环境问题 → 4；只是没给图/图都不存在 → 2
+      1    有 blocker（真错，允许一次定向重生）
+      4    有图未判定（工具/环境错误、路径不存在）——**不是 blocker，不要重生**
+      3    都是 pending（待处理，不得计通过）
+      0    pass
+    """
+    undecided = len(tool_errors) + len(skipped)
+    if not verdicts:
+        if undecided:
+            return 4, "❌ 全部图片都因工具/环境错误未能判定 —— **不是 blocker，不要据此定向重生**；" \
+                      "先修环境（依赖/路径/权限）再重跑"
+        return 2, ""
+    if any(v == "blocker" for v in verdicts):
+        return 1, "❌ blocker —— 按三档评审卡：才允许一次定向重生，只改一项"
+    if undecided:
+        detail = "、".join([n for n, _ in tool_errors[:3]] + skipped[:3])
+        return 4, (f"⚠️ 另有 {undecided} 张未判定（工具/环境错误或路径不存在，"
+                   f"**不是 blocker，不要重生**）：{detail}")
+    if any(v == "pending" for v in verdicts):
+        return 3, ("⏳ pending —— 指标在阈值内，但仍有未结项（文字未逐字核对，"
+                   "或水印存疑待 pick_wm / 云端处理）；处理完再回填，pending 不得当作通过")
+    return 0, "✅ pass（指标在阈值内 + 文字逐字无误）"
+
+
 def main():
     ap = argparse.ArgumentParser(description="出图后一次调用：量测+裁片+去水印+记账")
     ap.add_argument("images", nargs="+")
@@ -487,25 +510,10 @@ def main():
             tool_errors.append((os.path.basename(p), msg))
             print(f"  ⚠️ [tool_error] {os.path.basename(p)}：{msg}", file=sys.stderr)
 
-    if not verdicts and (tool_errors or skipped):
-        print("\n❌ 全部图片都因工具/环境错误未能判定 —— **不是 blocker，不要据此定向重生**；"
-              "先修环境（依赖/路径/权限）再重跑")
-        sys.exit(4)
-    if not verdicts:
-        sys.exit(2)
-    if any(v == "blocker" for v in verdicts):
-        print("\n❌ blocker —— 按三档评审卡：才允许一次定向重生，只改一项")
-        sys.exit(1)
-    if tool_errors or skipped:
-        detail = "、".join([n for n, _ in tool_errors[:3]] + skipped[:3])
-        print(f"\n⚠️ 另有 {len(tool_errors) + len(skipped)} 张未判定"
-              f"（工具/环境错误或路径不存在，**不是 blocker，不要重生**）：{detail}")
-        sys.exit(4)
-    if any(v == "pending" for v in verdicts):
-        print("\n⏳ pending —— 指标在阈值内，但仍有未结项（文字未逐字核对，"
-              "或水印存疑待 pick_wm / 云端处理）；处理完再回填，pending 不得当作通过")
-        sys.exit(3)
-    print("\n✅ pass（指标在阈值内 + 文字逐字无误）")
+    code, message = exit_policy(verdicts, tool_errors, skipped)
+    if message:
+        print("\n" + message)
+    sys.exit(code)
 
 
 if __name__ == "__main__":

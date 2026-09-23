@@ -372,6 +372,43 @@ def _entry_scripts():
     return out
 
 
+def test_description_covers_every_route():
+    """description 是**唯一**决定「用户这么说会不会被路由到本技能」的东西。
+
+    2026-09-23 实测覆盖账（22 条真实口吻的请求，含不熟悉的说法）发现三处零覆盖：
+    `探索模式`（多风格扫描是独立工作流，用户说「先出五个风格看看」漏触发）、
+    豆包/即梦环境（整条适配层没进 description）、平台署名水印（v1.21.0 的新能力）。
+    已补齐；这里把它钉成**路由面下限**——将来再删 description 时不许把整条路由删掉。
+
+    诚实边界：这是**覆盖判据，不是行为判据**。它只保证「每条路由都有对应的触发词族」，
+    证明不了模型一定会正确路由（那要真实对话样本，属另一层验证）。
+    但零覆盖必然漏触发，所以这条下限有牙。
+    """
+    skill = open(os.path.join(ROOT, "SKILL.md"), encoding="utf-8").read()
+    fm = skill.split("---", 2)[1]
+    desc = fm[fm.index("description:"):]
+
+    # 路由面 → 至少一个必须出现在 description 里的关键词族
+    routes = {
+        "类型 A 海报": ("海报",),
+        "类型 B 群像": ("插画", "群像"),
+        "类型 C 包装": ("包装", "mockup"),
+        "类型 D 分镜": ("分镜",),
+        "类型 E 多格": ("多格", "九宫格"),
+        "验收": ("验收",),
+        "去水印": ("水印",),
+        "探索模式": ("探索模式",),
+        "豆包/即梦环境": ("豆包", "即梦"),
+        "云端后处理": ("后处理",),
+    }
+    missing = [name for name, kws in routes.items()
+               if not any(k in desc for k in kws)]
+    check("description 覆盖每一条路由面（触发面下限）", not missing,
+          "零覆盖：" + "、".join(missing))
+    check("路由面清单本身没被写空（判据自检）", len(routes) >= 8,
+          f"只剩 {len(routes)} 条，判据可能已失效")
+
+
 def test_missing_dep_guard():
     """一类 bug：脚本碰了 cv2/numpy/PIL，却没接 _env 的「缺依赖说人话」。
 
@@ -420,6 +457,18 @@ def test_log_instrumentation():
           f"只扫到 {total} 个，判据可能已失效")
     check("所有入口脚本都接了 _log.run（本地使用日志）", not missing,
           "漏接：" + "、".join(missing[:5]))
+
+    # 名字必须与文件名一致（2026-09-23 加）。`_log.run("名字", main)` 的名字是**手写**的，
+    # 而日志里的 script 字段就是它 —— 写错了不会报错，只会让 log_report 的统计**张冠李戴**，
+    # 而它是后续所有「该改什么」判断的数据源。复制粘贴改脚本时最容易留下这种错。
+    mismatched = []
+    for path, src in _entry_scripts():
+        stem = os.path.basename(path)[:-3]
+        for m in re.finditer(r'_log\.run\(\s*"([^"]+)"', src):
+            if m.group(1) != stem:
+                mismatched.append(f"{os.path.basename(path)} 写的是 {m.group(1)!r}")
+    check("_log.run 的脚本名与文件名一致（日志不许张冠李戴）", not mismatched,
+          "；".join(mismatched[:3]))
 
 
 def test_argparse_help_survives():
@@ -491,5 +540,6 @@ def test_argparse_help_survives():
 TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
-         test_skill_dir_not_hardcoded, test_missing_dep_guard,
+         test_skill_dir_not_hardcoded, test_description_covers_every_route,
+         test_missing_dep_guard,
          test_log_instrumentation, test_argparse_help_survives]

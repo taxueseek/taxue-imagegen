@@ -93,6 +93,8 @@ def process(path, out_dir, box, thresh, kernel, dilate_iter, check_only, force=F
     # 覆盖率守卫：>40% 判掩膜失效——纹理/深色实色底上判据会退化成整块掩膜，
     # inpaint 将从整块边界向内扩散 = 抹平整块（坑 35，2026-09-18 事故）
     if cov > COVERAGE_LIMIT and not force:
+        _log.note("rmwm_light", ev="refuse", why="mask_coverage",
+                  cov=round(cov * 100, 1), limit=int(COVERAGE_LIMIT * 100))
         print(f"refuse {os.path.basename(path)}: 掩膜覆盖率 {cov*100:.1f}% > "
               f"{COVERAGE_LIMIT*100:.0f}%，判掩膜失效。\n"
               f"        纹理/深色实色底上「偏差阈值」判据会抓满整块 ROI，inpaint 将抹平整块并啃掉邻接文字。\n"

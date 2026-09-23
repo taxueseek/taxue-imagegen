@@ -126,6 +126,8 @@ def main():
     print(f"[imprint] n={n} ROI=({x0},{y0})-({x1},{y1}) 待修={cov:.2f}% "
           f"掩膜覆盖={(m>0).mean()*100:.2f}%")
     if cov > 60:
+        _log.note("dewm_imprint", ev="abort", why="coverage_over_60",
+                  cov=round(float(cov), 2), n=n)
         print("  [abort] 判定覆盖率 >60%，判据退化（坑 35 同类）—— 拒绝写出")
         # 退出码 2：与「跑完了但没写出」区分开。原先 return 即 rc=0，调用方（含 Agent）
         # 只看退出码会以为成功产出，等于把「没做」报成「做好了」。

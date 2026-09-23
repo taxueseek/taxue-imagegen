@@ -26,6 +26,8 @@
 import os
 import sys
 
+import _log
+
 try:
     import cv2
     import numpy as np
@@ -54,6 +56,11 @@ def imwrite_any(p, img):
     if ok:
         buf.tofile(p)
     return ok
+
+
+def note_guard(script, why, name):
+    """守卫被触发时记一笔本地日志。集中一处，调用方只递三个字段。"""
+    _log.note(script, ev="guard_redirect", why=why, name=name)
 
 
 def _is_image_path(s):
@@ -100,6 +107,10 @@ def _redirect(src, why, name=None):
     d = os.path.dirname(os.path.abspath(src))
     target = os.path.join(d, CLEAN_SUBDIR, name or os.path.basename(src))
     os.makedirs(os.path.dirname(target), exist_ok=True)
+    # 记一笔「守卫被触发」。这是本地日志最该收集的信号之一：它直接回答
+    # 「防覆盖这条守卫在真实使用里到底被触发过几次、是谁触发的」——
+    # 触发频率高说明调用方的 --out 习惯或文档示例有问题，该改文档而不是只加守卫。
+    note_guard("dewm_io", why.split("（")[0], os.path.basename(src))
     print(f"  ⚠️  {why}\n      → 已重定向到 {target}（原图保持不变）", file=sys.stderr)
     return target
 

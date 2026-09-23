@@ -26,8 +26,8 @@ import csv
 import json
 import os
 import re
-import statistics
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(HERE, "logs")
@@ -39,10 +39,10 @@ ROTATED = (f"{USAGE}.1", f"{USAGE}.2")
 MIN_N_FOR_CLAIM = 5
 
 
-def read_usage(extra=()):
+def read_usage():
     """读全部使用日志（含轮转份）。坏行跳过并计数——从不因为一行坏了丢掉整份。"""
     rows, bad, files = [], 0, []
-    for path in (USAGE,) + tuple(extra) + ROTATED:
+    for path in (USAGE,) + ROTATED:
         if not os.path.exists(path):
             continue
         files.append(path)
@@ -69,16 +69,13 @@ def read_usage(extra=()):
 def read_runs():
     """读出图记账。表头不认识就明说，不猜列义（同 postcheck.align_log 的态度）。"""
     if not os.path.exists(RUNS):
-        return [], [], []
+        return [], []
     try:
         with open(RUNS, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
     except (OSError, UnicodeDecodeError):
-        return [], [], ["runs.csv 读不了"]
-    if not rows:
-        return [], [], []
-    cols = list(rows[0].keys())
-    return rows, cols, []
+        return [], ["runs.csv 读不了"]
+    return rows, []
 
 
 def entry_scripts():
@@ -103,18 +100,16 @@ def entry_scripts():
 
 
 def within(rows, days):
+    """只保留最近 N 天的记录。时间解析不了的**保留**——宁可多算，不要把数据悄悄丢掉。"""
     if not days:
         return rows
-    import time
     cut = time.time() - days * 86400
     out = []
     for r in rows:
-        ts = str(r.get("ts", ""))
         try:
-            import time as _t
-            t = _t.mktime(_t.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+            t = time.mktime(time.strptime(str(r.get("ts", "")), "%Y-%m-%d %H:%M:%S"))
         except (ValueError, OverflowError):
-            out.append(r)      # 解析不了就别丢，宁可多算
+            out.append(r)
             continue
         if t >= cut:
             out.append(r)
@@ -130,7 +125,7 @@ def pct(vals, q):
     return s[k]
 
 
-def summarize(rows, runs, run_cols):
+def summarize(rows, runs):
     """把两份日志压成结构化摘要（报告与 --json 共用同一份计算，不重复实现）。"""
     by_script = collections.defaultdict(
         lambda: {"n": 0, "fail": 0, "ms": [], "codes": collections.Counter(),
@@ -169,12 +164,21 @@ def summarize(rows, runs, run_cols):
                 c = c.strip()
                 if c:
                     codes[c] += 1
+    # 非 run 的事件（守卫触发、判据退化中止…）。这些才是「哪个坑真在高频发生」的硬证据：
+    # run 行只说「谁被跑过」，事件行说「哪条防线真的被撞到了」。
+    events = collections.Counter()
+    for r in rows:
+        ev = str(r.get("ev", "run"))
+        if ev != "run":
+            events[(str(r.get("script", "?")), ev, str(r.get("why", "")))] += 1
+
     return {"by_script": by_script, "hosts": hosts, "pys": pys, "dates": dates,
-            "flags": flags, "verdicts": verdicts, "tracks": tracks, "codes": codes}
+            "flags": flags, "verdicts": verdicts, "tracks": tracks, "codes": codes,
+            "events": events}
 
 
-def report(rows, bad, files, runs, run_cols, run_err):
-    S = summarize(rows, runs, run_cols)
+def report(rows, bad, files, runs, run_err):
+    S = summarize(rows, runs)
     by_script = S["by_script"]
     print("=" * 68)
     print("taxue-imagegen 本地使用报告")
@@ -229,7 +233,15 @@ def report(rows, bad, files, runs, run_cols, run_err):
     if len(S["hosts"]) > 1:
         print("  ↑ 出现多种宿主：换宿主相关的问题（references/jimeng-env.md、v1.21.1 的解释器坑）优先查这里")
 
-    # ── 3. 出图记账 ──────────────────────────────────────────────────
+    # ── 3. 防线被触发：日志里最有行动价值的一段 ──────────────────────
+    if S["events"]:
+        print("\n-- 防线被触发（事件）" + "-" * 42)
+        for (script, ev, why), n in S["events"].most_common(10):
+            print(f"  {n:>4}×  {script:<16} {ev:<16} {why}")
+        print("  → 触发次数高的那条，问题多半不在守卫本身，而在调用方习惯或文档示例：")
+        print("    该改文档/默认值，而不是继续加守卫。")
+
+    # ── 4. 出图记账 ──────────────────────────────────────────────────
     if runs:
         print("\n-- 出图记账（runs.csv）" + "-" * 42)
         print("  verdict：" + "、".join(f"{k}×{v}" for k, v in S["verdicts"].most_common()))
@@ -260,10 +272,10 @@ def main():
 
     rows, bad, files = read_usage()
     rows = within(rows, args.days)
-    runs, run_cols, run_err = read_runs()
+    runs, run_err = read_runs()
 
     if args.json:
-        S = summarize(rows, runs, run_cols)
+        S = summarize(rows, runs)
         entries = entry_scripts()
         used = {s for s in S["by_script"] if S["by_script"][s]["n"] > 0}
         out = {
@@ -271,6 +283,7 @@ def main():
             "hosts": dict(S["hosts"]), "python": dict(S["pys"]),
             "verdicts": dict(S["verdicts"]), "tracks": dict(S["tracks"]),
             "codes": dict(S["codes"]), "flags": dict(S["flags"]),
+            "events": {f"{sc}/{e}/{w}": n for (sc, e, w), n in S["events"].items()},
             "scripts": {k: {"n": v["n"], "crashed": v["fail"],
                             "p50_ms": pct(v["ms"], 0.5), "p95_ms": pct(v["ms"], 0.95),
                             "errors": dict(v["errs"])}
@@ -280,7 +293,7 @@ def main():
         print(json.dumps(out, ensure_ascii=False, indent=2))
         return 0
 
-    report(rows, bad, files, runs, run_cols, run_err)
+    report(rows, bad, files, runs, run_err)
     return 0
 
 

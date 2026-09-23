@@ -503,7 +503,35 @@ def test_log_header_migrated():
               f" 并入了外来行={merged} 备份={len(baks)}")
 
 
-TESTS = [test_postcheck_verdict, test_cli_help, test_top_noise_not_blocker,
+def test_exit_policy_precedence():
+    """退出码优先级是 postcheck 对外唯一的契约，必须有断言把它钉住。
+
+    2026-09-23 把它从散落的五个 if 收成纯函数 `exit_policy()`，这里逐条钉优先级：
+    blocker(1) 压过「有图未判定」(4)；未判定压过 pending(3)；一张都没判定出来时
+    区分「工具坏了」(4) 与「压根没给图」(2)；全 pass 才是 0。
+    纯函数才好钉——这正是把它抽出来的理由之一。
+    """
+    P = load("postcheck").exit_policy
+    cases = [
+        ("全 pass → 0", ["pass", "pass"], [], [], 0),
+        ("pending → 3", ["pending"], [], [], 3),
+        ("有 blocker → 1", ["pass", "blocker"], [], [], 1),
+        ("blocker 压过工具错误 → 1", ["blocker"], [("a.png", "X")], [], 1),
+        ("有图未判定 → 4（不是 blocker）", ["pass"], [("a.png", "X")], [], 4),
+        ("路径不存在也算未判定 → 4", ["pass"], [], ["gone.png"], 4),
+        ("未判定压过 pending → 4", ["pending"], [("a.png", "X")], [], 4),
+        ("全都没判定出来 → 4", [], [("a.png", "X")], [], 4),
+        ("图全不存在 → 4", [], [], ["gone.png"], 4),
+        ("什么都没跑 → 2", [], [], [], 2),
+    ]
+    for label, verdicts, errs, skipped, want in cases:
+        code, msg = P(verdicts, errs, skipped)
+        check(label, code == want, f"得 {code}，期望 {want}")
+        check(f"{label}：该给用户一句话时就给", bool(msg) or want == 2,
+              "只有「什么都没跑」允许静默")
+
+
+TESTS = [test_postcheck_verdict, test_exit_policy_precedence, test_cli_help, test_top_noise_not_blocker,
          test_postcheck_track_e, test_no_duplicate_finding_codes,
          test_postcheck_wm_not_false_blocker,
          test_postcheck_dewm_backcompat, test_reason_codes_recorded,

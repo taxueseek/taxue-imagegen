@@ -121,14 +121,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - description 补触发缺口（`平台署名水印` / `探索模式` / `豆包·即梦`）并删掉一句与 §4/§8
   重复的指针：1,864 B（预算 2,000 B）。
 
+### 工程侧（严格复审轮的自我清理）
+
+按 `code-review` 的严格口径回看本批 diff，删掉自己引入的赘物：
+
+- **删掉两个一行包装**：`load_sibling` / `load_sibling_dict` 只是一行 `getattr` / `vars`
+  转发，三个调用点改为直连 `_sibling()`。少一层间接，也少一处「名字对不上真实模块」的可能。
+- **`postcheck` 的退出码决策收成一个纯函数 `exit_policy()`**：原先散成五个 `if`、各自
+  print 一段文案，读者要核对「4 和 3 谁优先」得来回跳，而每新增一类未判定状态（这轮就新增
+  tool_errors 与 skipped）都要在五处插桩。现在优先级写在一处，调用方只剩 `sys.exit(code)`；
+  纯函数也好钉，新增 20 条断言把优先级逐条锁住。
+- **`_log.note()` 原先是死代码（定义了从未调用）**。现在接到三处「防线被触发」：
+  `dewm_io` 的输出守卫重定向、`dewm_imprint` 判据退化中止、`rmwm_light` 覆盖率拒绝。
+  日志从此不只回答「谁被跑过」，还回答**「哪条防线真的被撞到了」**——`log_report.py`
+  新增「防线被触发」一节把它读出来（采了不读等于没采）。
+  判断口径写在报告里：触发次数高的那条，问题多半不在守卫本身，而在调用方习惯或文档示例。
+- **清掉未使用的形参与重复 import**：`log_report.read_usage(extra=…)`、`summarize(run_cols)`、
+  多余的 `import statistics` 与 `within()` 里的重复 `import time`。
+- 规模自检：本批改完后最大的脚本是 `postcheck.py` 520 行，**没有任何文件越过 1k 行**。
+
 ### 工程侧
 
 - `run_tests.sh` 的 import-check 补上「脚本目录进 sys.path」——这正是 `python3 scripts/x.py`
   的真实运行方式；少了它，任何顶层兄弟模块导入都会**假失败**（接日志时 31 个脚本被同时
   判红，实际都能正常跑）。
-- 新增门禁 4 条：`test_missing_dep_guard`、`test_log_instrumentation`、`test_batch_out_guard`、
-  `test_no_duplicate_finding_codes`；并扩 `test_argparse_help_survives` 覆盖「无 argparse 却
-  无视 --help」这一类。断言函数 32 → 37，回归 200 → 217 项。
+- 新增门禁 8 条：`test_missing_dep_guard`、`test_log_instrumentation`（含「日志里的脚本名
+  必须等于文件名」）、`test_batch_out_guard`、`test_no_duplicate_finding_codes`、
+  `test_imprint_input_hygiene`、`test_all_tracks_run_embedded_preflight`（含 B 主题库命中数
+  债务上限）、`test_exit_policy_precedence`（20 条优先级断言）、
+  `test_description_covers_every_route`（触发面下限，覆盖 10 条路由）；并扩
+  `test_argparse_help_survives` 覆盖「无 argparse 却无视 --help」这一类。
+  断言函数 32 → 40，回归 196 → 247 项。
 - 多环境实测：Python **3.9.6 / 3.13.12 / 3.14.7** 三套解释器下均 217/217、总门禁 8/8。
 
 ### 待实施（本次只登记，未改代码）
