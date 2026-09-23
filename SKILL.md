@@ -129,7 +129,8 @@ description: >-
 | 场景 | 必读 | 不读 |
 |---|---|---|
 | 类型 A 快速出图 | 本文件 + fill_meta 输出 + postcheck 输出 | poster-v5.md、pitfalls.md、历史文件 |
-| 类型 A 变体（穿插／横版两级文字／图形规则系统）、满铺、改硬底线 | `poster-v5.md` §一/§一·乙/§一·丙/§一·丁/§五；要复用已验证风格查 §六/§六·乙/§六·戊 | 版本历史（在 history 文件） |
+| 类型 A 变体（穿插／横版两级文字／图形规则系统）、满铺、改硬底线 | `poster-v5.md` §一/§一·乙/§一·丙/§一·丁/§五；要复用已验证风格查 §六/§六·乙/§六·己 | 版本历史（在 history 文件） |
+| 类型 A **横版 3:2 限色平印人物**（巨字横带 + 短句块） | `poster-h-series.md` §一 骨架 + §三 十一个风格槽位表；**要精确复现某张、或查某个槽位的长写法**再读 `h-series-prompts.md`（按风格节读，禁止整读） | `poster-v5.md` 整份（**竖版骨架，与本系不通用**） |
 | 类型 B 快速出图 | 本文件 + fill_meta 输出 + postcheck 输出 | crowd-illustration.md、crowd-themes.md、pitfalls.md |
 | 类型 B 自定义主题 | `crowd-illustration.md` §一 元提示词 | 主题库整读 |
 | 类型 B 主题五（高密度百相图） | `crowd-100-faces-prompt-v2.md`（修复版）；`crowd-100-faces-prompt-v1.md` 只在追溯两版差异时读 | 不做百相图时两个都不读 |
@@ -241,7 +242,9 @@ $PY "$SKILL/scripts/measure.py" --grid /tmp/grid.png *.png                     #
 
 | 文件 | 何时用 |
 |---|---|
-| `references/poster-v5.md` | 类型 A 操作层：v5.4 模板全文、三个段落级变体（§一·乙 主标题穿插 / §一·丙 横版 16:9 两级文字 / §一·丁 图形规则系统型）、填空规则、满铺/孤置（§五）、已验证风格三库（§六/§六·乙/§六·戊） |
+| `references/poster-v5.md` | 类型 A 操作层：v5.4 模板全文、三个段落级变体（§一·乙 主标题穿插 / §一·丙 横版 16:9 两级文字 / §一·丁 图形规则系统型）、填空规则、满铺/孤置（§五）、已验证风格（§六/§六·乙/§六·戊 台账 /§六·己 非 v5.4 骨架） |
+| `references/poster-h-series.md` | 类型 A **第二支母版**：横版 3:2 限色平印人物海报（巨字横带）的骨架、十一槽位语义、11 个已验证风格的完整槽位表。**与 poster-v5 不通用** |
+| `references/h-series-prompts.md` | H 系 11 份成品提示词原文（43KB，**禁止整读**，按风格节读）：要精确复现某张、或查某个槽位的长写法时用 |
 | `references/poster-v5-history.md` | 追溯模板为什么长这样（v1→v5.4 演进与验证详情，出图不读） |
 | `references/crowd-illustration.md` | 类型 B 方法层：元提示词、可数约束、实测结论 |
 | `references/crowd-themes.md` | 类型 B 主题一~五完整正负向提示词（36KB，**禁止整读**，fill_meta 按主题提取） |
