@@ -6,8 +6,41 @@
 import glob
 import os
 import re
+import subprocess
 
 from _harness import HERE, ROOT, SURFACE_BUDGETS, check
+
+
+def test_repo_root_whitelist():
+    """仓库根只跟踪约定文件：运行产物不许混进根目录。
+
+    实测来源（2026-09-23 资产盘点）：仓库根躺着一份 2 行的 `runs.csv`，内容是
+    `a.png` 的一次冒烟记录（该图早已不存在），却被 git 跟踪（v1.22.1 那笔的
+    `git add -A` 顺手带进去的），而真台账在 `scripts/logs/runs.csv`（70 行、
+    被 .gitignore 忽略）。后果不是「多一个文件」这么轻：文档里一律简称
+    「runs.csv」，根目录再放一份同名的，读的人会把冒烟数据当成生产记账——
+    **归因错了比没有归因更坏**，而技能里所有「先看台账再决定改什么」的动作
+    都建在这份数据上。
+
+    判据：`git ls-files` 里位于根目录（无 `/`）的条目 ∈ 白名单。白名单同时
+    覆盖真源与发布仓（发布仓独有 README / LICENSE / ASSET-LICENSE.md）。
+    本环境无 git 时显式打印「未校验」，不假装通过——覆盖缺口要说出来。
+    """
+    allow = {".gitignore", "SKILL.md", "CHANGELOG.md", "README.md", "README.en.md",
+             "LICENSE", "ASSET-LICENSE.md"}
+    try:
+        out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
+                             text=True, timeout=30)
+        if out.returncode != 0:
+            raise RuntimeError(out.stderr.strip()[:80] or "git ls-files 失败")
+        root_items = [l for l in out.stdout.splitlines() if l and "/" not in l]
+    except Exception as e:
+        print(f"  note 本环境读不到 git 跟踪列表（{e}）→ 根目录白名单**未校验**")
+        check("仓库根白名单（本环境无 git，未校验）", True, "")
+        return
+    bad = sorted(set(root_items) - allow)
+    check("仓库根只跟踪约定文件（运行产物不混进根目录）", not bad,
+          "根目录多出：" + "、".join(bad))
 
 
 def test_skill_frontmatter_window_free():
@@ -635,6 +668,7 @@ TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
          test_skill_dir_not_hardcoded, test_shell_var_braced_before_multibyte,
+         test_repo_root_whitelist,
          test_test_modules_are_wired_exactly_once,
          test_description_covers_every_route,
          test_missing_dep_guard,
