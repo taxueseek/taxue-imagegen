@@ -115,6 +115,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`postcheck.py` 的 `--no-log` 仍打印「→ runs.csv」**（声称落盘、实际没落）；
   **`--expect-cells` 配非 E 类型被静默丢弃**（用户以为校过格数）→ 改为明确拒绝。
 
+### 发布前核对（本轮实做，不是清单背诵）
+
+推送到网络这一步由用户把闸门，但**推之后会发生什么**全都能在本地先验。逐项做了：
+
+| 核对项 | 做法 | 结果 |
+|---|---|---|
+| CI 环境是否真能复现 | 用 uv 的 **Python 3.12.12** 建空 venv，只装 CI 那份包（`numpy pillow opencv-python-headless pyyaml`） | **269/269，总门禁 8/8，零 skip**（pyyaml 在位，YAML 门禁真跑了而不是跳过） |
+| 发布包能不能打出来 | 用 `release.yml` 里**同一条** `git archive` 命令，6 个 pathspec 打 HEAD | 成功，72 文件 / 1.04 MB；`__pycache__` / `.pyc` / `logs/` / `_research` / `.git` 均为 0；SKILL / scripts / references / sub-skills / LICENSE / CHANGELOG 全在 |
+| 发布说明能否抽出 | 用工作流里**同一段** python 正则匹配 `## [1.22.1]` | 命中，14,830 字符 / 330 行 / 10 个小节；抽不到时会 `sys.exit` 报「先补 CHANGELOG 再打标签」 |
+| 推标签会不会批量触发发布 | 逐个检查历史标签的树里有没有 `release.yml` | v1.20.0–v1.21.2 **全部没有** → 推 `--tags` 不会给旧版本造包（工作流注释里那句宣称，这里是实测） |
+| 要发的到底是哪些东西 | `git push --dry-run` | `50b3896..ce3abd8 main -> main`，11 笔提交，**无标签**，快进不需 force |
+
+顺带发现一处本地与 CI 的**剩余差异**：本机可用的解释器是 3.9.6 / 3.12.12 / 3.13.12 /
+3.14.7，CI 用的是 3.12 —— 现已用 3.12.12 补上，四档全绿，原先「CI 3.12 没在本地跑过」
+这个缺口没有了。
+
 ### 真实产出验收轮（跑真实成品 + 文档原命令，不是合成夹具）
 
 这轮换了验收方式：不再只用自造夹具，而是拿本机 **291 张真实产出**、文档里可照抄的原命令、
