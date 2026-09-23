@@ -41,13 +41,20 @@ def metric(path, label=""):
     H, Wd = im.shape[:2]
     x, y = wm_box(im)
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    bg = cv2.medianBlur(im.astype(np.uint8), 31).astype(np.float32)
+    # 只在水印框与其对照带所在的行段上算中值背景（2026-09-23）。
+    # 下面只用到 `r[ry0:]`，而 `medianBlur(31)` 的垂直支撑是 ±15 行 ——
+    # 从 ry0−16 起算，`r[ry0:]` 与「全图算一遍」**逐位相同**，却省掉上方大片
+    # （典型 1024×1536 图上约 2/3 的行）。这是本脚本最贵的一步，实测占其总耗时 22%。
+    # 之所以敢省：中值滤波的支撑有界且明确（ksize//2），不像 inpaint 那样靠不确定的
+    # 传播范围——那种情形下裁窗必须靠实测逐张比对才敢说等价。
+    ry0 = max(0, y - (H - y))
+    top = max(0, ry0 - 16)
+    bg = cv2.medianBlur(im[top:].astype(np.uint8), 31).astype(np.float32)
     gbg = cv2.cvtColor(bg.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
-    r = gray - gbg
+    r = gray[top:] - gbg          # r 的第 0 行 = 原图第 top 行，下面按此换算
 
-    sub = r[y:H, x:Wd]
-    ry0, ry1 = max(0, y - (H - y)), y
-    ref = r[ry0:ry1, x:Wd]
+    sub = r[y - top:H - top, x:Wd]
+    ref = r[ry0 - top:y - top, x:Wd]
     rms = float(np.sqrt((sub ** 2).mean()))
     rms_ref = float(np.sqrt((ref ** 2).mean())) if ref.size else 0.0
     p3 = 100.0 * float((np.abs(sub) > 3).mean())

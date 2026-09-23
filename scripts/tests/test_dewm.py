@@ -689,7 +689,64 @@ def test_imprint_input_hygiene():
               f"理由不可读：{blob[-160:]}")
 
 
-TESTS = [test_overwrite_guard, test_imprint_input_hygiene, test_batch_out_guard, test_solvability_guard, test_pick_wm_damage_aware,
+# ── 度量侧：裁窗与全图必须逐位一致 ────────────────────────────────
+def test_metric_flat_crop_equivalence():
+    """`metric_flat.metric` 只在水印框与对照带所在的行段上算中值背景（2026-09-23 优化）。
+
+    原先对整图跑 `medianBlur(31)` 三通道，而下面只消费 `r[ry0:]` ——
+    典型 1024×1536 图上约 2/3 的行白算。改成从 `ry0−16` 起算后，
+    在 40 张真实产出上把「核心计算」的耗时从 1611ms 压到 266ms（省 84%），
+    而 RMS 逐张一致。
+
+    这条门禁钉的就是「一致」那半句：**裁窗必须与全图象素级等价**，
+    否则省下来的时间是用错的数换的。判据是构造性比对——
+      ① 被消费的行段 `[ry0:]`：裁窗版与全图版必须逐位相同（中值滤波的垂直支撑是 ±15，
+         留 16 行余量，而裁边只影响 `top..ry0` 之间那 16 行，那 16 行不被消费）；
+      ② 断言这段确实覆盖全部被消费的行——把 `sub` / `ref` 的范围也照实现算一遍比对，
+         防止将来有人把消费范围改到 `ry0` 以上而门禁还绿。
+
+    夹具要够「脏」：纯色图上任何滤波都一样，等价性就测不出来了。
+    """
+    import numpy as np
+    import cv2
+    mf = load("metric_flat")
+
+    rng = np.random.default_rng(20260923)
+    H, W = 512, 384
+    base = np.clip(200 + rng.normal(0, 18, (H, W, 3)), 0, 255).astype(np.uint8)
+    base[H // 2:, W // 3:] = np.clip(base[H // 2:, W // 3:] - 40, 0, 255)  # 加一块硬边
+    im = np.ascontiguousarray(base)
+
+    def resid_full(img):
+        g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        bg = cv2.medianBlur(img.astype(np.uint8), 31).astype(np.float32)
+        return g - cv2.cvtColor(bg.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    def resid_crop(img, top):
+        g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        bg = cv2.medianBlur(img[top:].astype(np.uint8), 31).astype(np.float32)
+        return g[top:] - cv2.cvtColor(bg.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    _x, y = mf.wm_box(im)
+    ry0 = max(0, y - (H - y))
+    top = max(0, ry0 - 16)
+
+    a = resid_full(im)[ry0:]
+    b = resid_crop(im, top)[ry0 - top:]
+    check("metric_flat 裁窗版在**被消费的行段**上与全图版逐位相同",
+          a.shape == b.shape and np.array_equal(a, b),
+          f"最大差 {float(np.abs(a - b).max()):.3e}（裁剪改变了被消费的值，等于用错的数换速度）")
+
+    # ② 消费范围自检：sub 与 ref 都必须落在 [ry0:] 内
+    sub_rows = (y, H)
+    ref_rows = (ry0, y)
+    check("被消费的行段确实都在 [ry0:] 内（裁窗覆盖完整）",
+          min(sub_rows[0], ref_rows[0]) >= ry0,
+          f"sub={sub_rows} ref={ref_rows} ry0={ry0} —— 有消费落在裁窗之外")
+
+
+TESTS = [test_overwrite_guard, test_imprint_input_hygiene,
+         test_metric_flat_crop_equivalence, test_batch_out_guard, test_solvability_guard, test_pick_wm_damage_aware,
          test_pick_wm_noop_policy, test_pick_wm_ambiguous_hold,
          test_audit_unique_keys, test_wm_metrics_reference_free,
          test_v13_wiener_invariants, test_wm_auto_gate,
