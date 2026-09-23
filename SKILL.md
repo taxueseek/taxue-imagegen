@@ -1,6 +1,6 @@
 ---
 name: taxue-imagegen
-version: 1.21.0
+version: 1.21.1
 updated: 2026-09-23
 agent_created: true
 description: >-

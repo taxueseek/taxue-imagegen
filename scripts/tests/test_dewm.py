@@ -552,11 +552,35 @@ def test_missing_dep_message():
             check(f"{script} 缺 cv2 时给出人话而不是 traceback",
                   "Traceback" not in out and "依赖不可用" in out,
                   f"rc={r.returncode} out={out[-200:]!r}")
+            # 2026-09-23 CI 修：原断言要求出现 "workbuddy/binaries/python"——那是**本机
+            # 专有串**，CI runner 上必然没有（本地绿、CI 红，192/194）。改断言**行为**：
+            # ① 必须给出「换解释器重跑」这条路径；② 若它点名了解释器，那些解释器必须
+            # 真实存在；③ 一个都点不出来时必须明说「没找到」，不得含糊过去。
+            line = next((l for l in out.splitlines() if "换解释器重跑" in l), "")
+            named = [p for p in line.replace("：", " ").split() if p.startswith("/")]
+            honest = all(os.path.exists(p) for p in named) if named else ("没找到" in line)
             check(f"{script} 缺依赖时提示换解释器这条可执行路径",
-                  "换解释器重跑" in out and "workbuddy/binaries/python" in out,
-                  f"out={out[-200:]!r}")
+                  "换解释器重跑" in out and honest,
+                  f"named={named} line={line!r}")
             check(f"{script} 缺依赖退出码为 2（环境未就绪，区别于用法错误）",
                   r.returncode == 2, f"rc={r.returncode}")
+
+        # 判据本身单独测（不上 shim，用真实环境）：报出来的必须**真的能导入**依赖；
+        # 本机有能导入的候选时不得一个都不报。这两条是 2026-09-23 那次 CI 红的根因守卫：
+        # 原先只判「文件存在」，于是 runner 上的 /usr/bin/python3（无 cv2）被当成可用路径。
+        env_mod = load("_env")
+        found = env_mod._living_interpreters(["cv2", "numpy", "PIL"])
+        check("_living_interpreters 只报真的能导入依赖的解释器",
+              all(subprocess.run([p, "-c", "import cv2, numpy, PIL"],
+                                 capture_output=True).returncode == 0 for p in found),
+              f"found={found}")
+        cur = os.path.realpath(sys.executable)
+        good = [c for c in env_mod.best_interpreter()
+                if os.path.exists(c) and os.path.realpath(c) != cur
+                and subprocess.run([c, "-c", "import cv2, numpy, PIL"],
+                                   capture_output=True).returncode == 0]
+        check("_living_interpreters 不漏报：本机有能导入的候选时必须至少报出一个",
+              (not good) or bool(found), f"good={good} found={found}")
 
 
 TESTS = [test_overwrite_guard, test_solvability_guard, test_pick_wm_damage_aware,

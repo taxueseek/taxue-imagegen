@@ -28,6 +28,7 @@
 import importlib
 import os
 import re
+import subprocess
 import sys
 
 # 缺依赖时给出的两条修复路径。第一条优先：本技能在 WorkBuddy 里跑，
@@ -45,16 +46,37 @@ def _pkg_of(exc):
     return (name or "").split(".")[0] or None
 
 
-def _living_interpreters():
-    """提示里只报**真实存在**的解释器，最多两个，且排除当前这个（它就是缺依赖的那个）。
+def _probe(path, modules):
+    """候选解释器**真的能导入**这些模块吗。
+
+    只判「文件存在」不够：CI runner 上 `/usr/bin/python3` 存在、却没有 cv2，
+    照报它等于给出一条走不通的修复路径（2026-09-23 CI 实测，回归 192/194 卡在这里）。
+    判不了（不知道缺哪个包）时返回 None —— 此时不排除候选，保守处理。
+    """
+    mods = sorted({m for m in (modules or []) if m})
+    if not mods:
+        return None
+    try:
+        r = subprocess.run([path, "-c", "import " + ", ".join(mods)],
+                           capture_output=True, timeout=30)
+    except Exception:  # 解释器坏掉 / 超时 / 无执行权限，都算不可用
+        return False
+    return r.returncode == 0
+
+
+def _living_interpreters(modules=None):
+    """提示里只报**已验证能跑起来**的解释器（存在 + 能导入缺的那些模块），最多两个。
 
     `best_interpreter()` 的候选里有 WorkBuddy 内置路径——它只在 WorkBuddy 机上有；
     硬编码无条件推荐，会让其他机器上的第一条修复路径指向不存在的文件。
+    「存在」仍然不够，见 `_probe`。
     """
     out = []
     cur = os.path.realpath(sys.executable)
     for c in best_interpreter():
         if os.path.realpath(c) == cur or not os.path.exists(c):
+            continue
+        if _probe(c, modules) is False:
             continue
         out.append(c)
         if len(out) == 2:
@@ -72,12 +94,14 @@ def die(exc, modules=None):
     print(f"❌ 依赖不可用：{exc}", file=sys.stderr)
     if modules:
         print("   本脚本需要：" + "、".join(modules), file=sys.stderr)
-    living = _living_interpreters()
+    # 探针探「缺的那个东西」：调用方给了 modules 就用它，否则用从异常里认出来的包名。
+    # 两者都拿不到时 `_probe` 返回 None，候选只按存在性收——不猜，也不假装验证过。
+    living = _living_interpreters(modules or ([pkg] if pkg else None))
     if living:
-        print(f"   ① 换解释器重跑（本机真实存在）：{' 或 '.join(living)}", file=sys.stderr)
+        print(f"   ① 换解释器重跑（已实测能导入）：{' 或 '.join(living)}", file=sys.stderr)
     else:
-        print(f"   ① 换解释器重跑：用带齐依赖的那个"
-              f"（WorkBuddy 内置是 {MANAGED_HINT}，仅 WorkBuddy 机上有）", file=sys.stderr)
+        print("   ① 换解释器重跑：本机没找到已带齐依赖的解释器"
+              "（WorkBuddy 内置那个一般已带齐，仅 WorkBuddy 机上有）", file=sys.stderr)
     if pkg:
         target = PKG_HINT.get(pkg, pkg)
         req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")

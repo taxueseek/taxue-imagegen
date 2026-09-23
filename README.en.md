@@ -16,7 +16,7 @@
 
 Five types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, multi-grid sheet, or storyboard.
 
-[![Version](https://img.shields.io/badge/VERSION-1.21.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.21.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 Runs only inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview). Generation goes through its ImageGen; slot fill and verification are scripts. The other three skills in the family ship prompts you can copy anywhere; this one ships a pipeline that lives in WorkBuddy.
 
@@ -170,6 +170,7 @@ CI: [`.github/workflows/validate.yml`](./.github/workflows/validate.yml).
 
 ## Changelog
 
+- **v1.21.1** (2026-09-23): Fixes the root cause of CI going red right after v1.21.0 shipped — `_env`'s interpreter candidates were checked for **existence only**, and on the CI runner `/usr/bin/python3` exists without cv2, so the "switch interpreter" repair path pointed at an interpreter that fails just the same (green locally, red on CI). A candidate now has to **actually import the missing modules**; when none qualifies the message says so outright. The matching test drops its machine-specific assertion and checks behaviour instead. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.21.0** (2026-09-23): **The platform imprint is now removable in place** — new [`scripts/dewm_imprint.py`](./scripts/dewm_imprint.py) (cross-image consensus mask + αM reverse-alpha + hybrid routing). The imprint is a fixed graphic stamped after generation, not a tiled watermark, so the whole `dewm` family necessarily reports `k̂≈0` on it; the script needs a whole series at once. Also fixes preflight's third false positive: the paragraph-title exemption moved from a hard-coded whitelist to a **line-position** rule, so hand-written templates stop being flagged as "unfilled slots" (regression suite 192 checks). Writes back measured platform facts: the actual model is `hunyuan-image-alpha`, 5.71 credits per 1024x1536 image, and `quality` may not reach the request at all. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.20.1** (2026-09-18): Fix `runs.csv` header misalignment — every machine upgraded from an older version wrote rows under a stale 14-column header, silently defeating the very reason-codes the columns were added for; `align_log()` now verifies the header before writing and re-aligns rows by their own column order, preserving all 12 historical notes in the real log.
 - **v1.20.0** (2026-09-18): Audit round — fix drifted acceptance criteria (the verify sub-skill still carried a blocker that had been retracted, so an agent following it would keep mis-judging outputs as failures and burn credits on pointless regenerations); add a SKILL↔verify consistency gate; second round of resident-surface slimming (SKILL.md 34,228 → 29,652 B, −13%); split the regression suite by domain into five modules.
