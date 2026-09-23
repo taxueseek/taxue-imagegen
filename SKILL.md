@@ -118,7 +118,7 @@ description: >-
 | 4 | **postcheck 一次调用验收** | `postcheck.py 图.png --track A --top --text ok --note 'A/<风格>/<主题>/<主标题>'`——量测 + 底部文字带 2x 裁片 + **水印自动识别**（`--wm auto` 默认：amp 与 R² 双条件先判有无，命中才去并复检，干净图不动刀）+ runs.csv 记账，全程 <0.5s。**怎么判、判错了怎么办、各类型盯什么，真源在子技能 `sub-skills/verify/`**；数值阈值见 §5。生产纪律：**blocker 才允许一次定向重生，只改一项**（修复只改所属那段指令，坑 12）；精确文字两轮仍错 → 后期排版补字，不假装正确 |
 | 5 | 内联展示 | 用 `show_widget` 让用户在对话里直接看到，别只给路径 |
 | 6 | 归档 | 路径先 `find` 再引用（§7 硬规则 4）：本机成品目录下有 `_tools/sync_images.py`，确认存在再 `--apply`。**只归档成品**，中途产物留会话目录隔离（坑 13 教训④） |
-| 7 | 记录 | **数据先落本地，攒够频次再改文档**（见 §8 的 `log_report.py`）：运行数据由 postcheck 自动写入 `scripts/logs/runs.csv`，每次脚本调用由 `_log.py` 记入 `scripts/logs/usage.jsonl`；`log_report.py` 把两份日志读成「哪个坑真在高频发生 / 哪个脚本从没被用 / 哪一步在变慢」。**`--note` 按 `A/<视觉风格>/<主题>/<主标题>` 写**——不记风格就只能靠文件名反推，已验证风格会散落成资产流失（见 poster-v5.md §六·戊）。翻车与新结论先记进日志，**同一件事反复出现才写回 `references/pitfalls.md`，并当场把验证过的修复回写主模板**（poster-v5.md §一 / §六·戊 或 fill_meta 对应解析逻辑） |
+| 7 | 记录 | **数据先落本地，攒够频次再改文档**（见 §8 的 `log_report.py`）：运行数据由 postcheck 自动写入 `scripts/logs/runs.csv`，每次脚本调用由 `_log.py` 记入 `scripts/logs/usage.jsonl`；`log_report.py` 把两份日志读成「哪个坑真在高频发生 / 哪个脚本从没被用 / 哪一步在变慢」。**`--note` 按 `A/<视觉风格>/<主题>/<主标题>` 写**，并带 `--prompt <提示词.txt>`——验收顺带把这一版原文收进 `scripts/_prompts_archive/`（按「风格__主题__主标题」落名）。不记风格就只能靠文件名反推，提示词不收就只留在出稿批次目录里，两者都会把已验证风格散成资产流失（见 poster-v5.md §六·戊）。翻车与新结论先记进日志，**同一件事反复出现才写回 `references/pitfalls.md`，并当场把验证过的修复回写主模板**（poster-v5.md §一 / §六·戊 或 fill_meta 对应解析逻辑） |
 
 ---
 

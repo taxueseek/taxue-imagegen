@@ -644,7 +644,50 @@ def test_grid_metrics_refuses_unreliable_parse():
 
 
 
-TESTS = [test_postcheck_verdict,
+def test_prompt_archive():
+    """`--prompt`：把这一版的提示词原文收进技能内存档，命名带风格/主题/主标题。
+
+    2026-09-23 资产盘点：技能的「已验证资产」= 风格 + 它的提示词，但提示词一向由出图流程
+    写在出稿批次目录（不在技能内、不在备份内），技能只记 verdict。代价实测过：一批 11 个
+    「实测 pass」的风格只以文件名留在台账里，盘点时差点被判成「取不回来」永久丢掉。
+
+    门禁钉三件事，缺一条这个功能就白做：
+      ① 落点的**名字带风格/主题/主标题**（取自 --note 约定）——不然存档等于换个地方散落，
+         下次盘点还得靠反推；② **同一版重复验收要幂等**（同内容不产生 v2）；
+      ③ `--no-log` 时**不落盘**（跑测试/验证不污染生产存档，与 runs.csv 同一条纪律）。
+    """
+    pc = os.path.join(HERE, "postcheck.py")
+    with tempfile.TemporaryDirectory() as d:
+        from PIL import Image
+        img = os.path.join(d, "a.png")
+        Image.new("RGB", (1024, 1536), (250, 249, 247)).save(img)
+        log = os.path.join(d, "runs.csv")
+        arc = os.path.join(d, "arc")
+        prompt = os.path.join(d, "src_prompt.txt")
+        body = "设计一张横版 3:2 概念海报。\n\n【三项输入】\n视觉风格：青花釉下彩\n"
+        open(prompt, "w", encoding="utf-8").write(body)
+        note = "A/青花釉下彩/青花/COBALT"
+        base = [sys.executable, pc, img, "--track", "A", "--text", "ok",
+                "--log-path", log, "--prompt", prompt, "--archive-dir", arc, "--note", note]
+        subprocess.run(base, capture_output=True, text=True)
+        got = sorted(os.listdir(arc)) if os.path.isdir(arc) else []
+        check("提示词按「风格__主题__主标题」落名（不靠反推就能列出来）",
+              got == ["青花釉下彩__青花__COBALT.txt"], f"实际: {got}")
+        if got:
+            saved = open(os.path.join(arc, got[0]), encoding="utf-8").read()
+            check("存档是逐字原文（不是摘要、不是路径）", saved == body,
+                  f"落了 {len(saved)} B，原文 {len(body)} B")
+        subprocess.run(base, capture_output=True, text=True)
+        again = sorted(os.listdir(arc)) if os.path.isdir(arc) else []
+        check("同一版重复验收幂等（不产生 __v2）", again == got, f"实际: {again}")
+        arc2 = os.path.join(d, "arc2")
+        subprocess.run(base + ["--no-log", "--archive-dir", arc2], capture_output=True, text=True)
+        check("--no-log 时不落存档（与 runs.csv 同一条纪律）",
+              not os.path.isdir(arc2), f"仍然建了: {os.listdir(arc2) if os.path.isdir(arc2) else ''}")
+
+
+
+TESTS = [test_prompt_archive, test_postcheck_verdict,
          test_cli_help,
          test_top_noise_not_blocker,
          test_postcheck_track_e,

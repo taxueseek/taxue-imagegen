@@ -50,6 +50,7 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(HERE, "logs", "runs.csv")
+ARCHIVE_DIR = os.path.join(HERE, "_prompts_archive")
 
 CSV_COLS = ["ts", "file", "track", "size", "base", "white_pct", "paper_pct",
             "R-B", "sat", "top_noise", "top_dev", "text", "verdict",
@@ -210,6 +211,56 @@ def export_textband(path, im):
     out = os.path.splitext(path)[0] + "_textband.png"
     band.save(out)
     return out
+
+
+def _slug(s):
+    """文件名安全化：保留中英数字与 -_，其余换成 _（中文 isalnum() 为真，不用正则）。"""
+    out = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in (s or "").strip())
+    return out.strip("_") or "unnamed"
+
+
+def archive_prompt(prompt_path, note, archive_dir=None, no_log=False):
+    """把这一版的提示词原文收进技能内的存档目录，返回落点路径（没落则 None）。
+
+    2026-09-23 资产盘点：技能的「已验证资产」= 风格 **加上它的提示词**。
+    但提示词一向由出图流程写在**出稿批次目录**里，技能只记 verdict 不记提示词——
+    于是「验证过的」与「可复用的」分家。实测代价：一批 11 个「实测 pass」的风格
+    只以文件名形式留在台账里，盘点时差点被判定成「主题与短句取不回来」永久丢掉
+    （实际它们就躺在出稿目录的 `_prompts/` 里，字段齐全）。
+
+    **存档不是入库**：入库（写进 references/ 的风格库、能被下次直接复用）仍是一次
+    有意的动作，本函数只保证「东西在一个稳定、可检索的地方」。命名带风格/主题/主标题
+    （取自 `--note` 的 `A/<视觉风格>/<主题>/<主标题>` 约定），所以下次盘点 `ls` 一下
+    就能列出所有验证过的风格，不必再去翻散落的出稿目录。
+
+    纪律与记账一致：`no_log=True`（跑测试/验证）时不落盘；文件不存在或写不进去只告警，
+    不让一个考古动作把验收本身弄失败。
+    """
+    if no_log or not prompt_path:
+        return None
+    if not os.path.exists(prompt_path):
+        print(f"warn    --prompt 指的文件不存在，未存档: {prompt_path}", file=sys.stderr)
+        return None
+    parts = [p for p in (note or "").split("/") if p.strip()]
+    if len(parts) >= 4:                       # A/<视觉风格>/<主题>/<主标题>
+        base = "__".join(_slug(p) for p in parts[1:4])
+    else:
+        base = _slug(os.path.splitext(os.path.basename(prompt_path))[0])
+    d = archive_dir or ARCHIVE_DIR
+    try:
+        os.makedirs(d, exist_ok=True)
+        body = open(prompt_path, encoding="utf-8").read()
+        target, n = os.path.join(d, base + ".txt"), 2
+        while os.path.exists(target):
+            if open(target, encoding="utf-8").read() == body:
+                return target                 # 同一版重复验收，幂等
+            target = os.path.join(d, f"{base}__v{n}.txt")
+            n += 1
+        open(target, "w", encoding="utf-8").write(body)
+    except OSError as e:
+        print(f"warn    提示词存档失败（{e}），本次不存", file=sys.stderr)
+        return None
+    return target
 
 
 def align_log(log_path):
@@ -402,6 +453,9 @@ def process(path, args):
     hint = ",".join(c for c, _ in hints)
     append_log(row, args.track, text, verdict, args.note or "", reason, hint,
                no_log=args.no_log, log_path=args.log_path)
+    saved = archive_prompt(args.prompt, args.note, args.archive_dir, no_log=args.no_log)
+    if saved:
+        print(f"note    提示词已存档: {os.path.relpath(saved, os.path.dirname(HERE))}")
 
     name = row["file"]
     print(f"{name}  white%={row['white%']:.1f} paper%={row['paper%']:.1f} "
@@ -483,6 +537,11 @@ def main():
                     help="不写 runs.csv（跑测试/验证时用，避免污染生产记账）")
     ap.add_argument("--log-path", default=None,
                     help="覆盖 runs.csv 位置（默认 scripts/logs/runs.csv；测试/CI 用临时文件）")
+    ap.add_argument("--prompt", default=None,
+                    help="这一版的提示词原文（.txt）：给了就收进技能内存档，命名带风格/主题/主标题"
+                         "（取自 --note），下次盘点 ls 一下就能列出所有验证过的风格")
+    ap.add_argument("--archive-dir", default=None,
+                    help="覆盖提示词存档位置（默认 scripts/_prompts_archive；测试用临时目录）")
     args = ap.parse_args()
     if args.dewm:
         args.wm = "force"   # 旧参数语义保留，避免既有文档/脚本失效
