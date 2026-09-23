@@ -113,7 +113,7 @@ description: >-
 | 步 | 做什么 | 要点 |
 |---|---|---|
 | 1 | 定类型 + 定尺寸 | 一次定死，中途别改 |
-| 2 | **机械出稿** | **A/B/C/E 走脚本（默认）**：`fill_meta.py <类型> --list` 查槽位 → `--set KEY=VALUE` 填齐（A 是 7 槽、C 17 槽、E 11 槽；B 用 `--theme` 选主题），A 可加 `--manpu` 切满铺型；组装完自动过 preflight（A/C/E 有阻断项即拒发；B 的正文就是主题库整段内容，命中项只报不拦，见 CHANGELOG「待实施」）。**脚本已含全部验证过的禁令与校验（含 E 的「格数=清单条数」），LLM 不重抄模板**。**D 是半机械**：改 `build_storyboard.py --case cyber\|ink` 的 SCENES 生成 9 条，生成后单独跑 `preflight.py --track D`（跳过 A/B 专属规则）。模板没覆盖的新需求才手写（语种：B 必须英文，A 中文场景用中文，见坑 12），手写完单独跑 preflight |
+| 2 | **机械出稿** | **A/B/C/E 走脚本（默认）**：`fill_meta.py <类型> --list` 查槽位 → `--set KEY=VALUE` 填齐（A 是 7 槽、C 17 槽、E 11 槽；B 用 `--theme` 选主题），A 可加 `--manpu` 切满铺型；组装完自动过 preflight（A/C/E 有阻断项即拒发；B 的正文就是主题库整段内容，命中项只报不拦，见 CHANGELOG「待实施」）。**脚本已含全部验证过的禁令与校验（含 E 的「格数=清单条数」），LLM 不重抄模板**。**横版（H 系 / 复古宣传画）不走 `fill_meta`**——它的 A 轨骨架是**竖版 2:3**，喂横版需求会静默产出竖版提示词；横版按 `poster-horizontal-series.md` **手写填骨架**（§一/§六 的骨架 + 槽位表），填完照常跑 `preflight.py` 与 `postcheck.py --track A`。**D 是半机械**：改 `build_storyboard.py --case cyber\|ink` 的 SCENES 生成 9 条，生成后单独跑 `preflight.py --track D`（跳过 A/B 专属规则）。模板没覆盖的新需求才手写（语种：B 必须英文，A 中文场景用中文，见坑 12），手写完单独跑 preflight |
 | 3 | 报积分 → 出图 | 生产模式出 1 张；确需多张的**并行发起**，不要串行等；同主题多张时，三组文案/主体描述只写一次共享，各张只改构图与画幅 |
 | 4 | **postcheck 一次调用验收** | `postcheck.py 图.png --track A --top --text ok --note 'A/<风格>/<主题>/<主标题>'`——量测 + 底部文字带 2x 裁片 + **水印自动识别**（`--wm auto` 默认：amp 与 R² 双条件先判有无，命中才去并复检，干净图不动刀）+ runs.csv 记账，全程 <0.5s。**怎么判、判错了怎么办、各类型盯什么，真源在子技能 `sub-skills/verify/`**；数值阈值见 §5。生产纪律：**blocker 才允许一次定向重生，只改一项**（修复只改所属那段指令，坑 12）；精确文字两轮仍错 → 后期排版补字，不假装正确 |
 | 5 | 内联展示 | 用 `show_widget` 让用户在对话里直接看到，别只给路径 |

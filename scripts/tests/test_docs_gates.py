@@ -801,6 +801,35 @@ def test_horizontal_skeleton_passes_preflight():
         check("填出来的横版提示词过得了本技能自己的 preflight（0 阻断）",
               not blockers, "；".join(l[:70] for l in blockers[:3]))
 
+    # ── 复古宣传画那支的陷阱：槽位与结构标签**都用【】** ──────────────
+    # 「把所有【】替换掉」会砸掉骨架的结构标签（画幅/配色/质感…）。
+    # 这里按 §6.2 的表只替换那 5 个槽位，并断言 8 个结构标签**原样还在**。
+    r6 = _re.search(r"## 六、复古宣传画[^\n]*\n+.*?```\n(.*?)\n```", text, _re.S)
+    check("能定位到复古宣传画骨架（判据前提成立）", bool(r6), "§六 骨架块没找到")
+    if not r6:
+        return
+    skel6 = r6.group(1)
+    body6 = text.split("### 6.2 槽位说明", 1)[1].split("\n###", 1)[0]
+    table_slots = _re.findall(r"^\| (【[^】]+】) \|", body6, _re.M)
+    in_skel = set(_re.findall(r"【[^】]+】", skel6))
+    # **非空前置**（被反向验证逼出来的）：第一版把这些断言写成「表里的槽位 ⊆ 骨架里的【】」，
+    # 而当时 §6.2 的表**只有表头、没有数据行**——空集对任何集合都是子集，
+    # 于是后面几条**全部空转通过**，**文档缺陷与门禁空转互相掩盖**。
+    # 所以先断言「真的取到了槽位行」，空表必须红。
+    check("§6.2 的表真的取到了槽位行（否则下面的子集断言会空转通过）",
+          len(table_slots) >= 4, f"只取到 {len(table_slots)} 个：{table_slots}")
+    labels = sorted(in_skel - set(table_slots))
+    check("§6.2 声明的槽位都真的在骨架里（表与骨架不脱节）",
+          set(table_slots) <= in_skel, f"表里有但骨架没有：{sorted(set(table_slots) - in_skel)}")
+    check("骨架里【】确实混着结构标签（所以「全替换」是陷阱，文档必须写明）",
+          len(labels) >= 5, f"标签只有 {labels}——若不再混用，文档里那条警告该删")
+    filled6 = skel6
+    for k in table_slots:
+        filled6 = filled6.replace(k, "示例值")
+    check("只替换那 5 个槽位后，结构标签一个不少",
+          all(k in filled6 for k in labels) and not (set(table_slots) & set(_re.findall(r"【[^】]+】", filled6))),
+          "要么标签被误删，要么槽位没换干净")
+
 
 
 TESTS = [test_referenced_files_exist, test_horizontal_skeleton_passes_preflight, test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
