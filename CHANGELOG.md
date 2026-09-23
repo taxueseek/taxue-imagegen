@@ -31,7 +31,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 并发安全：单次 `O_APPEND` 写。实测 12 进程并发、92 行零坏行（技能本身鼓励并行出图）。
 - 测试与 CI 一律 `TAXUE_LOG=0`：测试跑出来的调用不算使用数据。
 
-### 修复（六个「一类」缺陷）
+### 修复（七个「一类」缺陷）
 
 1. **`--out` 传源目录会静默覆盖原图**（`dewm2` / `rmwm` / `rmwm_light` / `dewm_imprint` 四处）。
    守卫本来就在 `dewm_io`（`_real` + `_same_file` 连大小写变体、硬链接都堵死了），
@@ -62,6 +62,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 6. **缺依赖时不给人话**（`dewm_imprint.py`）。v1.21.0 新增时漏了 `_env` 自检，而同族另外
    23 个脚本都接了；顶层 `import cv2` 直接甩一屏 traceback，正好废掉 `_env` 存在的意义。
    新门禁 `test_missing_dep_guard` 按「碰重型依赖的入口脚本必须出现 `_env`」判定。
+7. **shell 里 `$var` 紧跟多字节字符会把整步静默打死**（`run_tests.sh` 的 publish guard，
+   全仓就这一处）。判据不是推理出来的，是**换环境跑出来的**：把发布仓 clone 到干净目录、
+   用 CI 的 Python 3.12.12 跑 `run_tests.sh`，`[8/8]` **什么都不打印、退出码 1**；
+   同一个 commit 在工作树里 8/8 全过。逐层剥到最小复现：
+
+   ```
+   bash -c 'set -euo pipefail; kwfile=x; echo "缺失（$kwfile）"'   → 退出码 1，后面一行不执行
+   bash -c 'set -euo pipefail; kwfile=x; echo "缺失（${kwfile}）"' → 正常
+   ```
+
+   机制：部分 bash（本机 5.3.15 实测）把紧跟 `$var` 的多字节字节当成变量名的一部分，
+   变量名成了 `kwfile）`，`set -u` 判未绑定，**整脚本退出 1**。它阴在三处叠加：
+   ① 那一行在 `else` 分支，只有「检出里没有 `_research/`」时才走；
+   ② 开发机上 `_research/` 恰好存在，所以**本地永远绿**；
+   ③ CI 现在也是绿的——因为 Ubuntu 那份 bash 不吃多字节。**这是运气不是设计**：
+   runner 的 bash 一升级，红的就是一个只在干净检出里跑的守卫步骤。
+   修法是 1 个字符（`$kwfile` → `${kwfile}`），另有门禁
+   `test_shell_var_braced_before_multibyte` 按静态判据（被 bash 执行的文件里
+   不得出现「未加花括号的 `$var` 紧跟非 ASCII 字节」）兜住这一类，零误报、写对就过，
+   已做反向验证（把花括号去掉，门禁立刻红并指到 `run_tests.sh:271`）。
+   修完在同一个干净检出上复跑：`[8/8]` 打印 `SKIP 黑名单缺失（_research/guard-keywords.txt）`
+   并正常收尾，8/8 全过。
 
 ### 修复（单点，均实测复现）
 

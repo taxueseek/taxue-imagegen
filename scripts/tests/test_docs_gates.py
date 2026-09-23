@@ -372,6 +372,43 @@ def _entry_scripts():
     return out
 
 
+def test_shell_var_braced_before_multibyte():
+    """一类 bug：shell 里 `$var` 紧跟多字节字符时，必须写成 `${var}`。
+
+    2026-09-23 实测（本轮唯一一次「在干净检出里跑」暴露出来的）：
+      bash -c 'set -euo pipefail; kwfile=x; echo "缺失（$kwfile）"; echo AFTER'
+      → 退出码 1，AFTER 不打印（静默死）；把 `$kwfile` 写成 `${kwfile}` 后正常。
+    机制：部分 bash（本机 5.3.15）把紧跟 `$var` 的多字节字节当成变量名的一部分，
+    变量名变成 `kwfile）` → `set -u` 判未绑定 → 整脚本退出 1。
+
+    这个坑阴在**它只出现在未被走到的分支**里：那一行在 `else` 分支，
+    只有「检出里没有 `_research/`」时才执行，而开发机上有 `_research/`，
+    所以本地永远绿；干净检出（CI、或任何人 clone 下来）才踩。CI 目前没红，
+    是因为 Ubuntu 那份 bash 不吃多字节——**这是运气，不是设计**：
+    runner 的 bash 一升级，红的就是一个只在干净检出里跑的守卫步骤。
+
+    判据：所有被 bash 执行的文件（`*.sh`、`.github/workflows/*.yml`）里，
+    不得出现「未加花括号的 `$var` 紧跟非 ASCII 字节」。纯静态、可证伪、零误报
+    （写 `${var}` 就过），全仓当前只有 1 处，已修。
+    """
+    import glob
+    import re
+    # HERE = scripts/，ROOT = 仓库根（两个都从 _harness 来，别自己再推一遍层级）
+    pat = re.compile(rb"\$[A-Za-z_][A-Za-z0-9_]*[\x80-\xff]")
+    offenders = []
+    targets = sorted(glob.glob(os.path.join(HERE, "*.sh"))) + \
+        sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")))
+    for path in targets:
+        data = open(path, "rb").read()
+        for m in pat.finditer(data):
+            ln = data[:m.start()].count(b"\n") + 1
+            offenders.append(f"{os.path.basename(path)}:{ln}")
+    check("门禁确实扫到了 shell 文件（判据前提成立）", len(targets) >= 2,
+          f"只扫到 {len(targets)} 个文件")
+    check("shell 里 `$var` 紧跟多字节字符时都加了花括号", not offenders,
+          "漏花括号：" + "、".join(offenders[:5]))
+
+
 def test_test_modules_are_wired_exactly_once():
     """一类 bug：回归用例**重复定义**或**定义了却没接线**。
 
@@ -597,7 +634,8 @@ def test_argparse_help_survives():
 TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
-         test_skill_dir_not_hardcoded, test_test_modules_are_wired_exactly_once,
+         test_skill_dir_not_hardcoded, test_shell_var_braced_before_multibyte,
+         test_test_modules_are_wired_exactly_once,
          test_description_covers_every_route,
          test_missing_dep_guard,
          test_log_instrumentation, test_argparse_help_survives]

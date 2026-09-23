@@ -263,7 +263,12 @@ if [ -d .git ]; then
             fi
         fi
     else
-        echo "  SKIP 黑名单缺失（$kwfile）"
+        # `${kwfile}` 必须加花括号：紧跟其后的全角「）」是多字节，而部分 bash
+        # （本机 5.3.15 实测）会把它的字节当成变量名的一部分 → 变量名成了 `kwfile）`
+        # → `set -u` 判未绑定 → **整步静默退出 1**。这一行在 else 分支里，
+        # 只有「检出里没有 _research/」时才会执行，所以本地（有 _research/）永远看不到，
+        # 而干净检出/CI 会走到——实测干净检出上 [8/8] 就死在这里。
+        echo "  SKIP 黑名单缺失（${kwfile}）"
     fi
 fi
 if [ "$guard_fail" -eq 0 ]; then
