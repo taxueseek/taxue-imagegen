@@ -746,7 +746,64 @@ def test_log_report_dual_count():
 
 
 
-TESTS = [test_referenced_files_exist, test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
+def test_horizontal_skeleton_passes_preflight():
+    """入库的横版骨架必须**自己填得出来、且过得了本技能自己的 preflight**。
+
+    2026-09-23 实测抓到的真事故：我第一版入库的 H 系骨架取自 `meta_prompt_h9.md` 的
+    **文档版**，而 11 张实测 pass 的图用的是 `build_h9.py` 的 `TEMPLATE`（生产版）——
+    两版槽位名相同，但文档版少三处硬化。**从文档版骨架 + §三 的表机械组装出来的提示词，
+    跑 preflight 得 1 阻断**（坑 14A「主标题穿插场景缺『只出现一次』」），
+    换生产版后阻断清零。也就是说：**照我入库的东西填，过不了自己的预检**。
+
+    这条门禁把那条验收路径固化下来：按文件里写的骨架与表填一个代表性样本
+    （取 §三 的 02 青花），跑真 `preflight.py`，**要求 0 阻断**（提醒可以有：
+    坑 16 长度是已知提醒，历史完整模板亦有通过案例）。
+    判据是 preflight 的退出码——它是真工具的真判定，不是我自己造的夹具。
+    """
+    import re as _re
+    import subprocess as _sp
+    import sys as _sys
+    import tempfile
+    ref = os.path.join(ROOT, "references", "poster-horizontal-series.md")
+    text = open(ref, encoding="utf-8").read()
+    m = _re.search(r"## 一、骨架[^\n]*\n+.*?```\n(.*?)\n```", text, _re.S)
+    check("能定位到横版骨架（判据前提成立）", bool(m), "§一 骨架块没找到")
+    if not m:
+        return
+    skel = m.group(1)
+
+    def row(sec, num):
+        body = text.split(sec, 1)[1].split("\n##", 1)[0]
+        for line in body.splitlines():
+            if line.startswith(f"| {num} |"):
+                return [c.strip().strip("*") for c in line.strip("|").split("|")]
+        return None
+
+    a, b = row("### 3.1 主槽位", "02"), row("### 3.2 场景槽位", "02")
+    check("能取到 02 青花的槽位行", bool(a and b), f"表A={a} 表B={b}")
+    if not (a and b):
+        return
+    filled = (skel.replace("{视觉风格}", "明代青花瓷釉下彩 × 当代博物馆出版物")
+                   .replace("{内容主题}", b[1]).replace("{表达意图}", b[2])
+                   .replace("{主体形象}", b[3]).replace("{背景元素}", b[4])
+                   .replace("{主色}", a[2]).replace("{强调色}", a[3]).replace("{纸底色}", a[4])
+                   .replace("{英文主标题}", a[5]).replace("{主标题逐字母}", "、".join(a[5]))
+                   .replace("{中文短句}", a[6]).replace("{中文逐字}", "、".join(a[6]))
+                   .replace("{英文短句}", a[7]))
+    check("骨架槽位名与表能对上（无残留未替换的槽位）",
+          "{" not in filled, "还有没被替换的槽位，说明表与骨架的槽位名不一致")
+    with tempfile.TemporaryDirectory() as d:
+        f = os.path.join(d, "h02.txt")
+        open(f, "w", encoding="utf-8").write(filled)
+        r = _sp.run([_sys.executable, os.path.join(HERE, "preflight.py"), f],
+                    capture_output=True, text=True)
+        blockers = [l for l in r.stdout.splitlines() if l.startswith("❌")]
+        check("填出来的横版提示词过得了本技能自己的 preflight（0 阻断）",
+              not blockers, "；".join(l[:70] for l in blockers[:3]))
+
+
+
+TESTS = [test_referenced_files_exist, test_horizontal_skeleton_passes_preflight, test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
          test_skill_dir_not_hardcoded, test_shell_var_braced_before_multibyte,
