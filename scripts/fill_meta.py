@@ -225,7 +225,9 @@ THEME_ALIASES = {
 }
 
 
-def load_track_b_themes():
+def _parse_crowd_themes():
+    """把 crowd-themes.md 拆成 {主题别名: 正文}。大多数主题的正文就是提示词，
+    例外见 EXTERNAL_THEME_PROMPTS。"""
     path = os.path.join(REF, "crowd-themes.md")
     text = open(path, encoding="utf-8").read()
     parts = re.split(r"(?m)^(## .*)$", text)
@@ -255,6 +257,36 @@ def load_track_b_themes():
                     continue
                 themes[alias] = "## " + head[3:] + body
                 order.append(alias)
+    return themes, order
+
+
+# 「正文即提示词」的例外。百相那一节在 crowd-themes.md 里留的是**档案**：
+# 主题设计原理、变化轴、实测 v1/v2 的指标表、修复方向。真正的提示词已收编到独立文件
+# （见该节末尾「完整提示词 v1 / v2 已收编为…」一行）。
+#
+# 这个例外不修会怎样（2026-09-23 实测）：`fill_meta B --theme 百相` 会把 4,485 字符的
+# **中文方法说明 + 23 行指标表格 + 一行工作区出图路径**整段打印出来当提示词，
+# 而真正的提示词一个字母都不在里面。与硬规则 5（元信息与内容物理分离）直接冲突——
+# 那段东西一旦提交，指标表就有约 50% 概率被画进画面（坑 8）。
+# 指向 v2 而不是 v1：SKILL.md §1/§4 写明的就是「v2（修复版）」。
+EXTERNAL_THEME_PROMPTS = {"百相": "crowd-100-faces-prompt-v2.md"}
+
+
+def load_prompt_block(path):
+    """取文件里**第一个 fenced 代码块**——本技能约定的「可直接提交的提示词」存放形态。"""
+    text = open(path, encoding="utf-8").read()
+    m = re.search(r"^```\n(.*?)^```$", text, re.S | re.M)
+    if not m:
+        fail(f"{os.path.basename(path)} 里没有 fenced 提示词块")
+    return m.group(1).rstrip() + "\n"
+
+
+def load_track_b_themes():
+    """从 crowd-themes.md 拼出类型 B 的 7 个主题；正文即提示词，例外见下表。"""
+    themes, order = _parse_crowd_themes()
+    for alias, fname in EXTERNAL_THEME_PROMPTS.items():
+        if alias in themes:
+            themes[alias] = load_prompt_block(os.path.join(REF, fname))
     return themes, order
 
 

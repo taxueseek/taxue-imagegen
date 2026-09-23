@@ -99,4 +99,47 @@ def test_all_tracks_run_embedded_preflight():
           f"（色相词要换成 hex 或纹理词）")
 
 
-TESTS = [test_fill_meta_track_c, test_all_tracks_run_embedded_preflight]
+def test_b_theme_texts_are_actually_prompts():
+    """一类 bug：主题加载器把**文档段**当提示词交出去。
+
+    2026-09-23 实测：`load_track_b_themes()["百相"]` 返回的是该节在 crowd-themes.md 里的
+    全部内容——4,485 字符的**中文方法说明 + 23 行指标表格 + 一行工作区出图路径**，
+    而真正的提示词早已「收编」到 `crowd-100-faces-prompt-v2.md`（该节末尾就这么写着）。
+    于是 `fill_meta B --theme 百相` 打印的东西一个英文提示词都没有，用户提交上去
+    等于把一张指标表交给模型（硬规则 5 / 坑 8：元信息约 50% 概率被画进画面）。
+
+    判据对**全部 7 个主题**统一施加（不针对百相）。这样将来任何一个主题把档案混进正文，
+    都会被立刻抓住：
+      · 不得出现 markdown 表格行（指标表的指纹）
+      · 不得出现「工作区出图」「generated-images」「### 实测」这类档案痕迹
+      · 必须是非空正文，且含英文（类型 B 的提示词硬性要求英文，见坑 12）
+    """
+    sys.path.insert(0, HERE)
+    import importlib.util
+    sp = importlib.util.spec_from_file_location("fill_meta", os.path.join(HERE, "fill_meta.py"))
+    fm = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(fm)
+    themes, order = fm.load_track_b_themes()
+
+    check("类型 B 主题数未变（判据覆盖完整）", len(order) == 7, f"现 {len(order)} 个：{order}")
+    bad_tables, bad_archives, bad_lang = [], [], []
+    for name in order:
+        t = themes[name]
+        if any(l.strip().startswith("|") for l in t.splitlines()):
+            bad_tables.append(name)
+        if any(k in t for k in ("工作区出图", "generated-images", "### 实测")):
+            bad_archives.append(name)
+        # 判据是「英文字母**总量**」而不是「连续 20 个字母」——英文有成段散文，
+        # 但单个单词不会超过 20 个字母（实测把 7 个主题全判错）。写判据时先想清楚
+        # 度量的是什么，否则门禁自己制造假红。
+        if sum(1 for ch in t if ch.isascii() and ch.isalpha()) < 200:
+            bad_lang.append(name)
+    check("B 主题正文里没有指标表（档案没被当提示词）", not bad_tables,
+          "含表格：" + "、".join(bad_tables))
+    check("B 主题正文里没有档案痕迹（实测记录/工作区路径）", not bad_archives,
+          "含档案：" + "、".join(bad_archives))
+    check("B 主题正文是英文提示词（类型 B 硬规则）", not bad_lang,
+          "英文量不足 200 字符：" + "、".join(bad_lang))
+
+
+TESTS = [test_fill_meta_track_c, test_b_theme_texts_are_actually_prompts, test_all_tracks_run_embedded_preflight]

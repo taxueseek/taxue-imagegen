@@ -314,7 +314,8 @@ def process(path, args):
     # 明明解析成功也照报——实测 3 行×1 列已正确识别，控制台仍并列打出
     # 「网格未解析（未量测）」，runs.csv 里也稳定出现两个 `grid_diag`。
     # 诊断里混进一条必然为假的行，代价是读者开始不信诊断。
-    grid = _sibling("measure.py").grid_metrics(path) if args.track == "E" else None
+    # 传 im：metrics() 已经把这张图解出来了，grid_metrics 不必再解码一次（类型 E 省一次全图解码）
+    grid = _sibling("measure.py").grid_metrics(path, im) if args.track == "E" else None
     blockers, pendings, hints = measure_findings(
         row, args.track, with_top, args.expect_cells, grid)
 

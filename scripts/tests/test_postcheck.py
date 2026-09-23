@@ -531,7 +531,49 @@ def test_exit_policy_precedence():
               "只有「什么都没跑」允许静默")
 
 
-TESTS = [test_postcheck_verdict, test_exit_policy_precedence, test_cli_help, test_top_noise_not_blocker,
+def test_box_mean_window_is_centered():
+    """`paper_white._box_mean` 的窗口必须**居中**——它决定「局部背景」取的是哪一块。
+
+    2026-09-23（对抗性审查实测）：padding 曾是不对称的 `((r+1, r), (r+1, r))`，
+    于是输出 (i,j) 取的是原图 [i-r-1, i+r-1] 的均值，**整格向左上偏一格**：
+    半径 r=1 时脉冲落在输出 [5,7] 而不是 [4,6]。后果是纸白归正时「局部背景」
+    系统性取错一格，凭据是它自己的 docstring 一直声称是居中 r 邻域。
+
+    判据两条，都不依赖实现细节：
+      ① 脉冲响应：单点脉冲的输出支撑必须是以脉冲位置为中心、边长 2r+1 的方格；
+      ② 与朴素实现逐点比对：把「居中邻域 + edge 扩展」直接写一遍，两者必须一致。
+    只做②会放过「两边一起错」的情形，只做①会放过边缘处理的错，所以两条都要。
+    """
+    import numpy as np
+    pw = load("paper_white")
+
+    for r in (1, 3, 7):
+        n = 2 * r + 5
+        a = np.zeros((n, n))
+        c = n // 2
+        a[c, c] = 1.0
+        out = pw._box_mean(a, r)
+        rows = [i for i in range(n) if out[i].any()]
+        cols = [j for j in range(n) if out[:, j].any()]
+        want = list(range(c - r, c + r + 1))
+        check(f"盒式均值窗口居中（r={r}）：支撑 {rows}", rows == want,
+              f"期望 {want}，实际 {rows} —— 窗口偏了")
+
+    rng = np.random.default_rng(0)
+    a = rng.random((37, 41)) * 255.0
+    r = 5
+    got = pw._box_mean(a, r)
+    h, w = a.shape
+    rs = np.clip(np.arange(h)[:, None] + np.arange(-r, r + 1)[None, :], 0, h - 1)
+    cs = np.clip(np.arange(w)[:, None] + np.arange(-r, r + 1)[None, :], 0, w - 1)
+    naive = np.stack([a[np.ix_(rs[i], cs[j])].mean()
+                      for i in range(h) for j in range(w)]).reshape(h, w)
+    check("盒式均值与「居中邻域 + edge 扩展」的朴素实现一致",
+          np.abs(got - naive).max() < 1e-9,
+          f"最大差 {np.abs(got - naive).max():.3e}")
+
+
+TESTS = [test_postcheck_verdict, test_box_mean_window_is_centered, test_exit_policy_precedence, test_cli_help, test_top_noise_not_blocker,
          test_postcheck_track_e, test_no_duplicate_finding_codes,
          test_postcheck_wm_not_false_blocker,
          test_postcheck_dewm_backcompat, test_reason_codes_recorded,

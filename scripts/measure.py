@@ -112,7 +112,7 @@ def metrics(path, with_top=False):
     return im, row
 
 
-def grid_metrics(path, bg_tol=26, gap_frac=0.55, min_band=0.04):
+def grid_metrics(path, im=None, bg_tol=26, gap_frac=0.55, min_band=0.04):
     """类型 E 多格排版的网格结构量测（校验「声明 vs 产出」，不引入新阈值）。
 
     为什么需要它：类型 E 的硬要求写在 multigrid-layout.md §三——
@@ -120,6 +120,10 @@ def grid_metrics(path, bg_tol=26, gap_frac=0.55, min_band=0.04):
     这些要求此前只在 **prompt 侧**被 fill_meta 校验（格数与清单条数一致），
     **图像侧从未验过**：模型完全可能把 4×4 画成 3×4、把格与格糊成一片、
     或让某一格尺寸跑偏。本函数补上这一环。
+
+    `im` 可以传一张已打开并 convert("RGB") 过的图（`metrics()` 就会返回它）。
+    2026-09-23 加：类型 E 的验收路径原先对同一张图**解码两次**（metrics 一次、
+    这里一次，4K 图各约 130ms），而调用方 postcheck 手里一直握着那张图。
 
     做法：先取四边环带中位数当背景色（多格模板的格间是白/纯色净空），
     再按行、按列统计「接近背景的像素占比」，占比超 gap_frac 的行/列判为格间净空，
@@ -142,7 +146,8 @@ def grid_metrics(path, bg_tol=26, gap_frac=0.55, min_band=0.04):
     except ImportError:
         return {"ok": False, "note": "需要 pillow"}
 
-    im = Image.open(path).convert("RGB")
+    if im is None:
+        im = Image.open(path).convert("RGB")
     W, H = im.size
     scale = 256.0 / W
     small = im.resize((256, max(1, int(H * scale))), Image.LANCZOS)
