@@ -16,7 +16,7 @@
 
 五种类型、四种工作流——把一句话做成稳定的封面、群像、包装样机、多格组图或分镜。
 
-[![Version](https://img.shields.io/badge/VERSION-1.21.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.21.2-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑通。出图走它的 ImageGen，填槽和验收由脚本完成。同系列另外三个技能交的是提示词本身，复制到哪都能用；本技能交的是一条跑在 WorkBuddy 里的流水线。
 
@@ -158,6 +158,7 @@ CI 详见 [`.github/workflows/validate.yml`](./.github/workflows/validate.yml)�
 
 ## 更新记录
 
+- **v1.21.2**（2026-09-23）：**新增坑 37**——RISO 双色高对比 + 大面积平白海报上，`postcheck --wm auto` 报 `SUSPECT(|amp|=1.37)` 实为**假警报**（1.37/255 ≈ 0.5%，肉眼不可分辨；`dewm_v10.py` 自己的可见度门控也先拒了它）。判定口径升为两步：`|amp| < 2.0` 且平白区 std≈0、放大裁片无字形 → **直接结项**，不要为消掉 pending 去跑 `pick_wm`（四版选优会对干净图各自反解出噪声）。并记下反例边界：合成网点图走的是「高 amp + 低 R²」的另一条分支，据此复现会得出相反结论。详见 [CHANGELOG.md](./CHANGELOG.md)。
 - **v1.21.1**（2026-09-23）：修 v1.21.0 发布后 CI 报红的根因——`_env` 的解释器候选只判「文件存在」不判「真能跑」，CI 上 `/usr/bin/python3` 存在却没有 cv2，于是「换解释器重跑」这条修复路径指向一个同样跑不起来的解释器（本地绿、CI 红）。改为**实测能导入缺的那些模块**才算候选，一个都过不了就明说「本机没找到」；对应用例去掉本机专有断言，改判行为。详见 [CHANGELOG.md](./CHANGELOG.md)。
 - **v1.21.0**（2026-09-23）：**平台署名水印可原地去除**——新增 `scripts/dewm_imprint.py`（跨图共识掩膜 + αM 反解 + 混合路由；署名是生成后另贴的固定图案、不是平铺水印，所以 `dewm` 全族对它必然报 `k̂≈0`），须同系列多张一起跑。修 preflight 第三处假阳性：段落标题豁免由硬编码白名单改为**行位置**判据（手写模板不再被误报「残留槽位」，回归 192 项）。写回平台实测口径：实际模型 `hunyuan-image-alpha`、单张 5.71 积分、`quality` 未必上链。详见 [CHANGELOG.md](./CHANGELOG.md)。
 - **v1.20.1**（2026-09-18）：修 `runs.csv` 表头错列——旧版升上来的机器此后每行都错位，正好废掉 reason 归因码要解决的问题；`align_log()` 写前校验表头并按各自列序归位，真实日志 12 条历史备注零丢失。

@@ -1,6 +1,6 @@
 ---
 name: taxue-imagegen
-version: 1.21.1
+version: 1.21.2
 updated: 2026-09-23
 agent_created: true
 description: >-
@@ -257,7 +257,7 @@ postcheck 命中时输出 `[paper_warm]` 并给 **pending**（不是 blocker）�
 | `references/storyboard.md` | 类型 D 方法层：双 LOCK 一致性锚 + 9 帧镜头设计法（1024x1792，必须串行出图） |
 | `references/multigrid-layout.md` | 类型 E 方法层：多格排版元模板 + 硬规则（一致性锚必填、清单全给或全不给、防样机收口） |
 | `references/size-and-params.md` | 全部参数、尺寸实测原始数据、画幅选择指南、积分与 quality |
-| `references/pitfalls.md` | 翻车了按症状查表（36 个坑，只读命中节）+ 待解决项 |
+| `references/pitfalls.md` | 翻车了按症状查表（37 个坑，只读命中节）+ 待解决项 |
 | `references/explore-mode.md` | 探索模式规则：单风格 2–5 / 多风格 5–9、分批 ≤3、settle 改名防撞名（坑 17） |
 | `references/cloud-postprocess.md` | 云端后处理完整版（§6 的展开）：操作映射、去水印双路由、官方六条纪律 |
 | `references/jimeng-env.md` | 豆包/即梦适配完整版（§9 的展开）：适配边界表、S0–S6 平台检测信号链 |
@@ -266,7 +266,7 @@ postcheck 命中时输出 `[paper_warm]` 并给 **pending**（不是 blocker）�
 | `scripts/fill_meta.py` | **机械填槽出稿（默认入口）**：A/B/C/E 全走它，组装完自动过 preflight；`--list` 查槽位/主题，`--manpu` 切满铺型 |
 | `scripts/jimeng.py` | 豆包/即梦环境出稿：只换算尺寸，prompt 与 fill_meta 逐字节一致；`--sizes` 查尺寸 |
 | `scripts/test_jimeng.py` | jimeng.py 回归测试（43 项，不依赖 numpy/PIL），已并入 run_tests.sh |
-| `scripts/preflight.py` | 手写提示词时单独跑的出图前静态检查（36 个坑中 11 个可文本拦截 + 残留槽位，认 {} 与【】）；fill_meta 已内嵌 |
+| `scripts/preflight.py` | 手写提示词时单独跑的出图前静态检查（37 个坑中 11 个可文本拦截 + 残留槽位，认 {} 与【】）；fill_meta 已内嵌 |
 | `scripts/postcheck.py` | **出图后一次调用（默认入口）**：量测+文字带 2x 裁片+水印自动识别+runs.csv 记账；`--track A–E`，类型 E 加 `--expect-cells N`；verdict 三值 blocker/pending/pass = 退出码 1/3/0 |
 | `scripts/measure.py` | 单独量测 / `--grid` 出对比拼图；`grid_metrics()` 是类型 E 网格结构判定 |
 | `scripts/wm_auto.py` | 水印自动识别与条件去除：amp 与 R² 双条件闸门 → skip/remove/manual；默认只探测，`--remove` 才执行；实测依据见 evidence.md §1 |
