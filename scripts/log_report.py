@@ -156,14 +156,38 @@ def summarize(rows, runs):
             flags[str(fl)] += 1
 
     verdicts, tracks, codes = collections.Counter(), collections.Counter(), collections.Counter()
+    # 码频次的**两个口径**必须一起给（2026-09-23 自我修正，见下）：
+    #   codes_by_row  —— 出现在多少**行**上（一行 = 一次 postcheck）
+    #   code_files    —— 落在多少**张不同的图**上
+    # 原实现只给前者。为什么要补后者：同一张图重复量测、以及「同一行两个同名码」那类
+    # 缺陷，都会把「按行」抬高；`grid_diag` 实测 按行 7 / 按图 3（2.3x）就是这么来的。
+    # 反过来，同一批里 N 张**不同的图**各自失败，按行与按图都是 N —— 那是真 N 次，
+    # 不是重复计数（`text_unverified` 12 行落在 12 个不同文件上，就是这种情况）。
+    code_files = collections.defaultdict(set)
+    note_empty = 0
+    batches = collections.defaultdict(lambda: {"rows": 0, "files": set(), "v": collections.Counter()})
     for row in runs:
         verdicts[str(row.get("verdict", ""))] += 1
         tracks[str(row.get("track", ""))] += 1
+        note = str(row.get("note", "") or "").strip()
+        if not note:
+            note_empty += 1
+        # note 当批次键：实测「classic9 scan」9 行 = 9 张不同的图 = 一个批次一个根因。
+        # 因此**不需要给 runs.csv 加批次列**（那要动表结构与迁移路径）——
+        # 出图流程本来就在 note 里写了批次（见 SKILL.md §3 步 7 的 note 约定）。
+        b = batches[note or "（无 note）"]
+        b["rows"] += 1
+        b["files"].add(str(row.get("file", "")))
+        b["v"][str(row.get("verdict", ""))] += 1
+        f = str(row.get("file", ""))
         for col in ("reason", "hint"):
             for c in str(row.get(col, "") or "").split(","):
                 c = c.strip()
                 if c:
                     codes[c] += 1
+                    code_files[c].add(f)
+    runs_n = len(runs)
+    note_empty_rate = note_empty / runs_n if runs_n else 0.0
     # 非 run 的事件（守卫触发、判据退化中止…）。这些才是「哪个坑真在高频发生」的硬证据：
     # run 行只说「谁被跑过」，事件行说「哪条防线真的被撞到了」。
     events = collections.Counter()
@@ -174,6 +198,10 @@ def summarize(rows, runs):
 
     return {"by_script": by_script, "hosts": hosts, "pys": pys, "dates": dates,
             "flags": flags, "verdicts": verdicts, "tracks": tracks, "codes": codes,
+            "code_files": {c: len(s) for c, s in code_files.items()},
+            "batches": {k: {"rows": v["rows"], "files": len(v["files"]), "v": v["v"]}
+                        for k, v in batches.items()},
+            "note_empty_rate": note_empty_rate, "runs_n": runs_n,
             "events": events}
 
 
@@ -246,18 +274,42 @@ def report(rows, bad, files, runs, run_err):
         print("\n-- 出图记账（runs.csv）" + "-" * 42)
         print("  verdict：" + "、".join(f"{k}×{v}" for k, v in S["verdicts"].most_common()))
         print("  类型：" + "、".join(f"{k}×{v}" for k, v in S["tracks"].most_common()))
+        n = S["runs_n"]
+        er = S["note_empty_rate"]
+        print(f"  note 空值率：{er * 100:.0f}%（{round(er * n)}/{n}）"
+              + ("  ← 空 note 的行无法归因到风格/主题，风格库就没法自动回流"
+                 if er > 0 else ""))
         if S["codes"]:
+            # 两个口径一起给：按行会因「同图重复量测」「同行同名码」而虚高，
+            # 按图才是「有多少张不同的图栽在这个码上」。比值 >1 就是重复的信号。
             print("  出得最多的码（reason/hint 合并）：")
-            for c, n in S["codes"].most_common(10):
-                print(f"    {n:>4}  {c}")
+            print(f"    {'按行':>4} {'按图':>4}  码")
+            for c, cnt in S["codes"].most_common(10):
+                fn = S["code_files"].get(c, 0)
+                dup = f"  ← {cnt / fn:.1f}x 重复" if fn and cnt > fn else ""
+                print(f"    {cnt:>4} {fn:>4}  {c}{dup}")
+        b = S.get("batches") or {}
+        big = sorted(((k, v) for k, v in b.items() if k != "（无 note）"),
+                     key=lambda kv: -kv[1]["rows"])[:5]
+        if big:
+            print("  按 note 分批次（一个批次 = 一个待解决问题，不是 N 次独立翻车）：")
+            for k, v in big:
+                vs = "、".join(f"{a}×{c}" for a, c in v["v"].most_common())
+                print(f"    {v['rows']:>3} 行 / {v['files']:>3} 图  {k[:24]:26s}{vs}")
         if len(S["codes"]) and len(runs) >= MIN_N_FOR_CLAIM:
             top_code, top_n = S["codes"].most_common(1)[0]
             rate = top_n / len(runs) * 100
-            print(f"\n  → 最高频码 `{top_code}` 出现在 {rate:.0f}% 的记账行上。")
+            fn = S["code_files"].get(top_code, 0)
+            print(f"\n  → 最高频码 `{top_code}` 出现在 {rate:.0f}% 的记账行上"
+                  f"（{fn} 张不同的图，"
+                  + ("按行按图一致 = 真发生这么多次）" if top_n == fn
+                     else f"按行按图 {top_n / fn:.1f}x = 有重复计入，看上面)") )
             print("    若它是 hint（只提示）而出现率又很高：说明提示没在改变行为，")
             print("    该考虑改默认值或改模板，而不是继续加提示。")
             print("    若它是 reason 且高频：按坑号回查 references/pitfalls.md，")
             print("    看能不能前移到 preflight 做出图前的文本拦截。")
+            print("    顺序上先看「按 note 的批次」：同一批次里 N 张同因失败，")
+            print("    是一个根因，修一次就全好，别按行数排成 N 件事。")
     print("\n-- 判读纪律" + "-" * 56)
     print(f"  样本 < {MIN_N_FOR_CLAIM} 条的结论一律不可外推（同 evidence.md 的采集纪律）。")
     print("  要改文档，先让这里的数据指到同一件事，再动 SKILL.md / pitfalls.md。")
@@ -283,6 +335,10 @@ def main():
             "hosts": dict(S["hosts"]), "python": dict(S["pys"]),
             "verdicts": dict(S["verdicts"]), "tracks": dict(S["tracks"]),
             "codes": dict(S["codes"]), "flags": dict(S["flags"]),
+            "code_files": S["code_files"],
+            "note_empty_rate": round(S["note_empty_rate"], 4),
+            "batches": {k: {"rows": v["rows"], "files": v["files"],
+                            "verdicts": dict(v["v"])} for k, v in S["batches"].items()},
             "events": {f"{sc}/{e}/{w}": n for (sc, e, w), n in S["events"].items()},
             "scripts": {k: {"n": v["n"], "crashed": v["fail"],
                             "p50_ms": pct(v["ms"], 0.5), "p95_ms": pct(v["ms"], 0.95),

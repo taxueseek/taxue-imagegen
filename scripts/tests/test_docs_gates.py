@@ -8,7 +8,7 @@ import os
 import re
 import subprocess
 
-from _harness import HERE, ROOT, SURFACE_BUDGETS, check
+from _harness import HERE, ROOT, SURFACE_BUDGETS, check, load
 
 
 def test_repo_root_whitelist():
@@ -664,7 +664,42 @@ def test_argparse_help_survives():
           "忽略 --help：" + "、".join(silent[:4]))
 
 
-TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
+def test_log_report_dual_count():
+    """码频次必须同时给「按行」与「按图」，且批次按 note 聚合。
+
+    2026-09-23 自我修正：我先前把 `text_unverified` 那 12 行读成「一次批量扫描被记成
+    十几次失败」，理由是 9 行落在同一分钟。**结论是错的**——12 行落在 **12 个不同的
+    文件**上，那就是 12 张图各自失败，计数没错；错的是把它当 9 次独立事件去排优先级。
+    真正存在重复计入的是 `grid_diag`（按行 7 / 按图 3 = 2.3x，来自同图重复量测与
+    当时还没修的「同行两个同名码」）。
+
+    于是这里钉住三件事：① 两个口径都给，比值 >1 才是重复的信号；
+    ② 批次用 note 聚合，行列数与图数分开给（一个批次 = 一个待解决问题）；
+    ③ note 空值率算出来——空 note 的行没法归因到风格，风格库就回流不了。
+    """
+    lr = load("log_report")
+    runs = [
+        {"file": "a.png", "verdict": "pending", "track": "A", "reason": "grid_diag", "note": "批1"},
+        {"file": "a.png", "verdict": "pending", "track": "A", "reason": "grid_diag", "note": "批1"},
+        {"file": "b.png", "verdict": "pass", "track": "A", "hint": "grid_diag", "note": "批1"},
+        {"file": "c.png", "verdict": "blocker", "track": "A", "reason": "txt", "note": ""},
+    ]
+    S = lr.summarize([], runs)
+    # 夹具：a.png 被量了两次（各出一条 grid_diag）+ b.png 一条 hint 也是 grid_diag
+    #        → 按行 3；a 与 b 共 2 张图 → 按图 2（a 的那两次被折成 1）
+    check("按行如实计入重复量测（3 行）", S["codes"]["grid_diag"] == 3,
+          f"实际 {S['codes']['grid_diag']}")
+    check("按图把同一张图的重复折成 1（3 行 / 2 图，比值 1.5x 才看得见重复）",
+          S["code_files"]["grid_diag"] == 2, f"实际 {S['code_files']['grid_diag']}")
+    check("批次按 note 聚合，行列数与图数分开",
+          S["batches"]["批1"]["rows"] == 3 and S["batches"]["批1"]["files"] == 2,
+          f"实际 {S['batches']['批1']}")
+    check("note 空值率算出来（空 note 没法归因到风格）",
+          abs(S["note_empty_rate"] - 0.25) < 1e-9, f"实际 {S['note_empty_rate']}")
+
+
+
+TESTS = [test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
          test_skill_dir_not_hardcoded, test_shell_var_braced_before_multibyte,

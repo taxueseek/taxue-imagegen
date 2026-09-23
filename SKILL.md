@@ -135,8 +135,8 @@ description: >-
 | 类型 B 自定义主题 | `crowd-illustration.md` §一 元提示词 | 主题库整读 |
 | 类型 B 主题五（高密度百相图） | `crowd-100-faces-prompt-v2.md`（修复版）；`crowd-100-faces-prompt-v1.md` 只在追溯两版差异时读 | 不做百相图时两个都不读 |
 | 探索模式（多风格扫描 / 单风格打磨） | `explore-mode.md` | — |
-| 类型 C 快速出图 | 本文件 + `packaging-editorial.md` §一 模板 + §二 槽位表 | §三 只在翻车/新形态时读 |
-| 类型 D 快速出图 | 本文件 + `storyboard.md` §三 模板 + §四 镜头设计法 | §一/§二 定位与机制只在首次建 LOCK 时读 |
+| 类型 C 快速出图 | 本文件 + `packaging-editorial.md` §一 模板 + §二 槽位表 + postcheck 输出（`--track C`；§5 有 C 的指标阈值） | §三 只在翻车/新形态时读 |
+| 类型 D 快速出图 | 本文件 + `storyboard.md` §三 模板 + §四 镜头设计法 + postcheck 输出（`--track D`；§5 有 D 的指标阈值） | §一/§二 定位与机制只在首次建 LOCK 时读 |
 | 类型 E 快速出图 | 本文件 + fill_meta E 输出 + postcheck 输出 | `multigrid-layout.md` 只在翻车/改模板时读 |
 | 查某个坑的修复写法 | `pitfalls.md` 对应小节（先按症状表定位，再 `grep -n "^## 坑 "` 取行号只读那一节） | 其余坑节（全文约 114 KB，禁止整读） |
 | 选画幅/参数细节 | 本文件 §2 不够时读 `size-and-params.md` | — |
