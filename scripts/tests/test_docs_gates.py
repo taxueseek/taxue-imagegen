@@ -1,3 +1,50 @@
+def test_referenced_files_exist():
+    """活文档里提到的 `.md` 必须真的存在（悬空引用 = 搬出去没人读）。
+
+    2026-09-23 实测：把 `poster-h-series.md` 改名为 `poster-horizontal-series.md`
+    （文件里后来装了两支横版母版），**一步就制造了 4 处悬空引用**——
+    `poster-v5.md` 2 处、`h-series-prompts.md` 2 处，而另一条门禁只证明
+    「每个存在的文件都被引用」，**证不了「被引用的文件都存在」**，方向是反的，
+    所以那次改名全绿通过。这条补反方向。
+
+    判据按**存在性**，不写死名单：
+      · `references/*.md` 的 basename —— 存在即可；
+      · `SKILL.md` / `CHANGELOG.md` —— 根目录那两个；
+      · `sub-skills/**/<name>.md` —— 子技能里的（如 verify 的 evidence.md）。
+    三条之外还出现的 `.md` 就是悬空的。
+
+    两种写法都查：带前缀的 `references/xxx.md` 与**裸文件名** `xxx.md`。
+    起因是第一次写这条门禁时只匹配了带前缀的形式，而文档里大量引用是裸文件名
+    （实测 18 种标记里只有 1 种带前缀），反向验证时漏判，等于没牙。
+
+    范围只扫活文档（`SKILL.md` + `references/*.md`）：`CHANGELOG.md` 里出现旧文件名
+    是**历史记录**，不该要求它存在（本次改名这件事正是靠它记下来的）。
+    """
+    import glob as _glob
+    import re as _re
+    refs = {os.path.basename(p) for p in _glob.glob(os.path.join(ROOT, "references", "*.md"))}
+    subs = {os.path.basename(p) for p in
+            _glob.glob(os.path.join(ROOT, "sub-skills", "**", "*.md"), recursive=True)}
+    known = refs | subs | {"SKILL.md", "CHANGELOG.md"}
+    docs = [os.path.join(ROOT, "SKILL.md")] + sorted(
+        _glob.glob(os.path.join(ROOT, "references", "*.md")))
+    # 两种写法都要收，缺一种就是半个门禁（实测踩过两次）：
+    #   · 带前缀 `references/xxx.md` —— §8 索引那种写法；
+    #   · 裸文件名 `xxx.md` —— §4 场景表与正文里的多数写法。
+    # 一条正则吞不下两者：裸名那条的 lookbehind 会排除 `/`，
+    # 于是 `references/xxx.md` 整个匹配不上（前缀里的 `/` 把它挡住了）。
+    prefixed = _re.compile(r"references/([A-Za-z0-9._-]+\.md)")
+    bare = _re.compile(r"(?<![\w/.-])([A-Za-z0-9][A-Za-z0-9._-]*\.md)")
+    dangling = []
+    for p in docs:
+        text = open(p, encoding="utf-8").read()
+        names = set(prefixed.findall(text)) | set(bare.findall(text))
+        for name in sorted(names - known):
+            dangling.append(f"{os.path.basename(p)}→{name}")
+    check("活文档引用的 md 文件都存在（无悬空引用）", not dangling,
+          "悬空：" + "、".join(sorted(set(dangling))[:5]))
+
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """文档与门禁域：front-matter（坑 31）、文档一致性、版本三方一致、
@@ -699,7 +746,7 @@ def test_log_report_dual_count():
 
 
 
-TESTS = [test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
+TESTS = [test_referenced_files_exist, test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
          test_skill_dir_not_hardcoded, test_shell_var_braced_before_multibyte,
