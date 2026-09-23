@@ -252,6 +252,54 @@ def grid_metrics(path, im=None, bg_tol=26, gap_frac=0.55, min_band=0.04):
         inner = runs[1:-1] if len(runs) > 2 else runs
         return int(sum(inner) / len(inner) * (W / float(w))) if inner else 0
 
+    gap_px = min(typical_gap(col_gaps), typical_gap(row_gaps))
+
+    cells_n = len(col_bands) * len(row_bands)
+
+    # 自洽性闸门：`ok` 的含义收窄为「**确实找到了一张多格网格**」（2026-09-23 修）。
+    # 两条必要条件，都来自真实产出上的实测：
+    #   ① 量得出格间净空（gap_px > 0）。背景色取「四边环带的中位数」，这条前提在
+    #      **没有外边距的拼版**上不成立——环带里装的就是各格内容，中位色因此落在内容色上，
+    #      `is_bg` 把大片内容判成背景，行列切分崩坏。实测一张真 3×3 接触表
+    #      （1536²、九张不同的图）被报成 `ok=True, cols=1, rows=2, cells=2, gap_px=0`。
+    #   ② 至少两格。读到 1 格的含义是「没找到网格结构」，不是「找到了一张 1 格的网格」——
+    #      实测齐边 3×3（有外边距、格间无缝）被报成 `cells=1`，同样是自信的错答案。
+    # 为什么非收不可：`ok=True` 在下游是**硬判据**——postcheck 见到 `--expect-cells` 不匹配
+    # 就判 `[cell_count]` blocker，而 blocker =「允许一次定向重生」＝再扣 5–10 积分。
+    # 这与坑 27（top_noise 13/13 全灭）同类：**提示性量测被当成硬判据**。
+    # 方向上只会减少假 blocker，不会新增（最坏退回「请目检格数」）。
+    #
+    # 已知局限（本轮不修，已登记 CHANGELOG）：缩略到 256 宽后**极细的缝会消失**——
+    # 实测 4px 缝的 3×3 被读成 4 格。缝宽小于原图宽度约 1% 时，本函数数不准格数。
+    if gap_px <= 0 or cells_n < 2:
+        why = ("未量出格间净空（无外边距拼版 / 无缝变体？）" if gap_px <= 0
+               else "只读到单格，没找到网格结构")
+        return {"ok": False, "note": f"{why}·解析不可信，请目检格数",
+                "cols": len(col_bands), "rows": len(row_bands),
+                "cells": cells_n, "uniform": round(band_uni, 3),
+                "gap_px": 0}
+
+    # `ok` 的含义收窄为「**确实找到了一张多格网格**」（2026-09-23 修）。
+    # 两条必要条件，都来自实测：
+    #   ① 量得出格间净空（gap_px > 0）。无外边距的拼版上「背景色 = 四边环带中位数」这条
+    #      前提不成立，环带里装的是各格内容，切分随之崩坏。实测一张真 3×3 接触表
+    #      （1536²，九张不同的图）报 `ok=True, cols=1, rows=2, cells=2, gap_px=0`。
+    #   ② 至少两格。1 格的含义是「没找到网格结构」，不是「找到了一个 1 格的网格」——
+    #      实测一张齐边的 3×3（有外边距、格间无缝）被报成 `cells=1`，同样是自信的错答案。
+    # 为什么非收不可：`ok=True` 下游是硬判据——postcheck 见到 `--expect-cells` 不匹配就判
+    # `[cell_count]` blocker，而 blocker =「允许一次定向重生」＝再扣 5–10 积分。
+    # 这与坑 27（top_noise 13/13 全灭）同类：**提示性量测被当成硬判据**。
+    # 方向上只会减少假 blocker，不会新增（最坏退回「请目检格数」）。
+    # 已知局限（本轮不修，见 CHANGELOG）：缩略到 256 宽后**极细的缝会消失**，
+    # 实测 4px 缝的 3×3 被读成 4 格——缝宽小于原图宽度的约 1% 时，本函数数不准格数。
+    if gap_px <= 0 or cells_n < 2:
+        why = ("未量出格间净空（无外边距拼版 / 无缝变体？）" if gap_px <= 0
+               else "只读到单格，没找到网格结构")
+        return {"ok": False, "note": f"{why}·解析不可信，请目检格数",
+                "cols": len(col_bands), "rows": len(row_bands),
+                "cells": cells_n, "uniform": round(band_uni, 3),
+                "gap_px": 0}
+
     return {
         "ok": True,
         "cols": len(col_bands), "rows": len(row_bands),
@@ -262,7 +310,7 @@ def grid_metrics(path, im=None, bg_tol=26, gap_frac=0.55, min_band=0.04):
         "cell_uniform": cell_uni,
         "cell_w": [int(v) for v in cell_w],
         "cell_h": [int(v) for v in cell_h],
-        "gap_px": min(typical_gap(col_gaps), typical_gap(row_gaps)),
+        "gap_px": gap_px,
         "note": "",
     }
 

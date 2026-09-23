@@ -51,6 +51,18 @@ def build(csv_path, out_dir):
     rows = list(csv.DictReader(open(csv_path, encoding="utf-8-sig")))
     if not rows:
         fail(f"CSV {csv_path} is empty")
+    # 表头先校验（2026-09-23 修）。文档 `references/explore-mode.md` §三 已经写明表头
+    # 是 `num,style,topic,intent,subject,en,cn,ens,manpu`，但代码从未检查过——
+    # 于是漏一列时抛的是 `KeyError: 'num'` 这种**看不出该改什么**的 traceback，
+    # 而退出码 1 在本脚本里还同时表示「有 item 失败」，调用方分不清是输入错还是出稿错。
+    # 这里按文档校验必需列，缺列就用人话报出来并退出 2（与其它入参错误同码）。
+    REQUIRED = ("num", "style", "topic", "intent", "subject", "en", "cn", "ens")
+    have = set(rows[0].keys())
+    missing = [c for c in REQUIRED if c not in have]
+    if missing:
+        fail(f"CSV {csv_path} 缺列：{'、'.join(missing)}；"
+             f"表头应为 {'/'.join(REQUIRED)}（可选 name、manpu，见 references/explore-mode.md §三）；"
+             f"当前表头：{','.join(sorted(have))}")
     manifest = {"source": os.path.abspath(csv_path), "items": []}
     for r in rows:
         num = r["num"].strip().zfill(2)
@@ -71,11 +83,16 @@ def build(csv_path, out_dir):
         args += ["--out", out_txt]
         # 2026-09-23 修：原来 stderr 也被吞掉，失败只剩一个 FAIL 字样，原因无处可查。
         # 保留 stdout 静默（prompt 全文没必要回显），但把 stderr 收下来，失败时打末尾几行。
-        r = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        rc = r.returncode
+        # 变量名必须是 proc：外层 `for r in rows` 已经把 `r` 当成了当前行，
+        # 用 `r` 接 CompletedProcess 会**把它覆盖掉**，下一轮 `r["topic"]` 直接
+        # `TypeError: 'CompletedProcess' object is not subscriptable`
+        # （2026-09-23 真实流程实测踩到，第 1 行成功、第 2 行崩）。
+        proc = subprocess.run(args, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.PIPE, text=True)
+        rc = proc.returncode
         ok = (rc == 0) and os.path.exists(out_txt)
         if not ok:
-            why = [l for l in (r.stderr or "").strip().splitlines() if l.strip()][-3:]
+            why = [l for l in (proc.stderr or "").strip().splitlines() if l.strip()][-3:]
             print("\n".join(f"      {l}" for l in why) or f"      rc={rc}", file=sys.stderr)
         manifest["items"].append({
             "num": num, "name": name, "style": style,

@@ -573,8 +573,86 @@ def test_box_mean_window_is_centered():
           f"最大差 {np.abs(got - naive).max():.3e}")
 
 
-TESTS = [test_postcheck_verdict, test_box_mean_window_is_centered, test_exit_policy_precedence, test_cli_help, test_top_noise_not_blocker,
-         test_postcheck_track_e, test_no_duplicate_finding_codes,
+def test_grid_metrics_refuses_unreliable_parse():
+    """类型 E：`ok=True` 必须意味着「**确实找到了一张多格网格**」，不许是自信的错答案。
+
+    2026-09-23 真实产出验收发现：一张真正的 3×3 接触表（1536²、九张不同的图、四周无外边距）
+    被报成 `ok=True, cols=1, rows=2, cells=2, gap_px=0`。根因是背景色取「四边环带的中位数」，
+    无外边距时环带里装的就是各格内容，中位色落在内容色上，`is_bg` 把大片内容判成背景。
+
+    危害在下游：postcheck 见到 `--expect-cells 9` 就判 `[cell_count]` blocker，
+    而 blocker =「允许一次定向重生」＝再扣 5–10 积分。与坑 27（top_noise 13/13 全灭）同类：
+    **提示性量测被当成硬判据**。
+
+    故 `ok=True` 加两条必要条件：① 量得出净空（gap_px>0）；② 至少两格。
+    本用例钉的是「收窄后仍能正确分辨」，两侧都要测：
+
+      该拒的：齐边拼版（格间无缝，实测被读成 cells=1）
+      该收的：带净空的 3×3 / 2×2，格数必须准，不许因为收紧判据而误伤
+
+    **已知局限（本用例不判失败，只登记）**：缩略到 256 宽后极细的缝会消失——
+    实测 4px 缝的 3×3 被读成 4 格。缝宽小于原图宽度约 1% 时本函数数不准格数，
+    故 `--expect-cells` 只在缝可见的前提下才可信（见 CHANGELOG 待实施）。
+    """
+    from PIL import Image, ImageDraw
+    gm = load("measure").grid_metrics
+
+    def sheet(n, gap, edge, size=768, seed=7, white_tiles=0):
+        im = Image.new("RGB", (size, size), (255, 255, 255))
+        dr = ImageDraw.Draw(im)
+        rng = __import__("random").Random(seed)
+        cw = (size - gap * (n + 1) - edge * 2) // n
+        for r in range(n):
+            for c in range(n):
+                x = edge + gap + c * (cw + gap)
+                y = edge + gap + r * (cw + gap)
+                k = r * n + c
+                col = ((235, 235, 235) if k < white_tiles
+                       else (rng.randint(20, 90), rng.randint(20, 90), rng.randint(20, 90)))
+                dr.rectangle([x, y, x + cw - 1, y + cw - 1], fill=col)
+        return im
+
+    with tempfile.TemporaryDirectory() as d:
+        p1 = os.path.join(d, "flush.png")
+        sheet(3, gap=0, edge=40).save(p1)          # 格间无缝：没有网格信号
+        g1 = gm(p1)
+        check("齐边拼版（格间无缝）不报自信格数", g1["ok"] is False,
+              f"ok={g1['ok']} cells={g1.get('cells')} gap_px={g1.get('gap_px')}")
+        check("拒绝时必须给出可读原因", bool(g1.get("note")),
+              "ok=False 却不说明原因，读者分不清「还没解析」与「这张不算网格」")
+
+        p2 = os.path.join(d, "gap3x3.png")
+        sheet(3, gap=18, edge=40).save(p2)
+        g2 = gm(p2)
+        check("带净空的 3×3 仍 ok=True 且格数正确", g2["ok"] and g2["cells"] == 9,
+              f"ok={g2['ok']} cells={g2.get('cells')} gap_px={g2.get('gap_px')}"
+              f" —— 收紧判据不能把真判据一起废掉")
+
+        p3 = os.path.join(d, "gap2x2.png")
+        sheet(2, gap=18, edge=40).save(p3)
+        g3 = gm(p3)
+        check("带净空的 2×2 同样 ok=True 且格数正确", g3["ok"] and g3["cells"] == 4,
+              f"ok={g3['ok']} cells={g3.get('cells')}")
+
+        # 已知局限：只登记，不判失败（修它要改 256 缩略的比例，越出本轮范围）
+        p4 = os.path.join(d, "hairline.png")
+        sheet(3, gap=4, edge=0).save(p4)
+        g4 = gm(p4)
+        if g4["ok"] and g4["cells"] != 9:
+            print(f"      登记  细缝(4px) 3×3 被读成 {g4['cells']} 格 —— 已知局限，"
+                  f"缝宽 < 原图宽约 1% 时格数不可信（见 CHANGELOG 待实施）")
+
+
+
+TESTS = [test_postcheck_verdict,
+         test_cli_help,
+         test_top_noise_not_blocker,
+         test_postcheck_track_e,
+         test_no_duplicate_finding_codes,
          test_postcheck_wm_not_false_blocker,
-         test_postcheck_dewm_backcompat, test_reason_codes_recorded,
-         test_log_header_migrated]
+         test_postcheck_dewm_backcompat,
+         test_reason_codes_recorded,
+         test_log_header_migrated,
+         test_exit_policy_precedence,
+         test_box_mean_window_is_centered,
+         test_grid_metrics_refuses_unreliable_parse]

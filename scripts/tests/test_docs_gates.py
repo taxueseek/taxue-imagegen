@@ -372,6 +372,58 @@ def _entry_scripts():
     return out
 
 
+def test_test_modules_are_wired_exactly_once():
+    """一类 bug：回归用例**重复定义**或**定义了却没接线**。
+
+    两者都是静默的，而且恰好是这家仓库踩过的形状：
+      · v1.20.1 之前 `test_preflight_quote_declaration` 定义了但没进 TESTS，
+        于是它**从未跑过**——门禁不报错，只是不生效。
+      · 2026-09-23 我在同一个文件里反复插入用例，把尾部整块复制了一遍：
+        同名函数出现两次，Python 取**后定义**的那个，于是「刚写好的新用例」被旧版本
+        静默顶掉（实测：新写的格数门禁跑的是被覆盖前的旧断言，还报了两个 FAIL）。
+    两次都不是逻辑错，是接线错，而接线错只能靠静态判据兜。
+
+    判据三条，逐文件施加：
+      ① 不得有同名 `def test_*`（重复定义 = 后者静默覆盖前者）
+      ② 每个 `def test_*` 都必须出现在该文件的 TESTS 里（不许有孤儿）
+      ③ TESTS 里不得出现非测试函数（例如把 `_make_grid` 这种夹具写进了列表，
+         运行时会以 TypeError 崩，或更糟——把夹具的返回值当成一个"通过"）
+    """
+    import ast
+    tests_dir = os.path.dirname(os.path.abspath(__file__))
+    dupes, orphans, strays = [], [], []
+    files = [f for f in sorted(os.listdir(tests_dir))
+             if f.startswith("test_") and f.endswith(".py")]
+    for fn in files:
+        path = os.path.join(tests_dir, fn)
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        defs = [n.name for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+        seen, dup = set(), []
+        for d in defs:
+            if d in seen:
+                dup.append(d)
+            seen.add(d)
+        if dup:
+            dupes.append(f"{fn}: {sorted(set(dup))}")
+
+        registered = None
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and any(
+                    getattr(t, "id", None) == "TESTS" for t in node.targets):
+                registered = [e.id for e in node.value.elts if isinstance(e, ast.Name)]
+        if registered is None:
+            continue
+        orphans += [f"{fn}: {d}" for d in defs if d not in registered]
+        strays += [f"{fn}: {n}" for n in registered if n not in defs]
+
+    check("测试用例没有重复定义（后者会静默覆盖前者）", not dupes, "；".join(dupes))
+    check("每个 test_ 函数都接进了 TESTS（不许有从未跑过的用例）", not orphans,
+          "孤儿：" + "、".join(orphans[:4]))
+    check("TESTS 里只有测试函数（夹具混进去会改变运行语义）", not strays,
+          "混入：" + "、".join(strays[:4]))
+
+
 def test_description_covers_every_route():
     """description 是**唯一**决定「用户这么说会不会被路由到本技能」的东西。
 
@@ -542,6 +594,7 @@ def test_argparse_help_survives():
 TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
-         test_skill_dir_not_hardcoded, test_description_covers_every_route,
+         test_skill_dir_not_hardcoded, test_test_modules_are_wired_exactly_once,
+         test_description_covers_every_route,
          test_missing_dep_guard,
          test_log_instrumentation, test_argparse_help_survives]

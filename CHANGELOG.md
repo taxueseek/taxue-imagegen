@@ -115,6 +115,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`postcheck.py` 的 `--no-log` 仍打印「→ runs.csv」**（声称落盘、实际没落）；
   **`--expect-cells` 配非 E 类型被静默丢弃**（用户以为校过格数）→ 改为明确拒绝。
 
+### 真实产出验收轮（跑真实成品 + 文档原命令，不是合成夹具）
+
+这轮换了验收方式：不再只用自造夹具，而是拿本机 **291 张真实产出**、文档里可照抄的原命令、
+以及一个新的干净环境（空 venv + 只装 `requirements.txt`）跑一遍。四类新发现：
+
+- **`explore.py build` 遇到缺列的 CSV 甩 `KeyError` traceback**。文档
+  `references/explore-mode.md` §三 早已写明表头 `num,style,topic,intent,subject,en,cn,ens,manpu`，
+  代码却从未校验——漏一列时报的是 `KeyError: 'num'`，看不出该改什么，而退出码 1 在本脚本里
+  还同时表示「有 item 失败」，调用方分不清是输入错还是出稿错。改为按文档校验必需列，
+  缺列时列出缺了哪些并退出 2。
+- **`explore.py` 的变量遮蔽**：`for r in rows` 的 `r` 被我用 `r = subprocess.run(...)` 覆盖，
+  于是**第一行成功、第二行崩** `TypeError: 'CompletedProcess' object is not subscriptable`。
+  这是我本轮改「失败原因可见」时自己引入的，被真实的三行 CSV 跑出来。已改名 `proc`。
+- **`dewm_io.imread_any` 对空缓冲区从 OpenCV 抛异常**：`cv2.imdecode` 对 0 字节文件抛
+  `(-215:Assertion failed) !buf.empty()`，而截断文件只返回 None——同一个「读不出来」两种行为，
+  0 字节那条把调用方的 `if img is None` 兜底整条绕过。实测 `dewm_v10.py zero.png` 崩栈 rc=1，
+  而 `trunc.png` 走「skip (unreadable)」正常分支。共享读图口加一行收成 None，两者同路。
+- **`grid_metrics` 的 `ok=True` 不够硬**：真实 3×3 接触表（1536²、九图、四周无外边距）被报成
+  `ok=True, cells=2, gap_px=0` —— 自信的错答案。`ok` 的含义收窄为「确实找到多格网格」：
+  ① 量得出净空（`gap_px>0`）② 至少两格。方向上只会减少假 blocker，不会新增。
+  已知局限（只登记）：细缝（< 原图宽约 1%）在 256 缩略后消失，实测 4px 缝的 3×3 被读成 4 格。
+
+**被修掉的假 blocker 与真阻断的对比**（这也是为什么要收窄 `ok`）：E 轨的 `[cell_count]` 是硬判据，
+判错一次＝允许一次定向重生＝再扣 5–10 积分，与坑 27（top_noise 13/13 全灭）同类。
+
 ### 性能与资源
 
 - **`metric_flat` 对整图跑 `medianBlur(31)`，而只消费水印框与对照带所在的约 1/3 行**。
@@ -183,6 +208,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### 工程侧
 
+- **测试文件尾部被整块复制，同名的用例出现两次**——Python 取**后定义**的那个，
+  于是「刚写好的新用例」被旧版本静默顶掉（我本轮在同一文件里反复插入时造的，
+  实测新写的格数门禁跑的是被覆盖前的旧断言）。已重建去重。
+  新增门禁 `test_test_modules_are_wired_exactly_once` 钉三件事，全部是这家仓库踩过的形状：
+  ① 不得同名重复定义；② 每个 `def test_*` 都必须进 `TESTS`（v1.20.1 之前
+  `test_preflight_quote_declaration` 定义过却从未跑过）；③ `TESTS` 里不得混入夹具
+  （把 `_make_grid` 写进列表会让运行语义变形）。
 - `run_tests.sh` 的 import-check 补上「脚本目录进 sys.path」——这正是 `python3 scripts/x.py`
   的真实运行方式；少了它，任何顶层兄弟模块导入都会**假失败**（接日志时 31 个脚本被同时
   判红，实际都能正常跑）。
@@ -210,6 +242,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   故本轮**不动主题内容**，只把「B 也过 preflight」的接线补齐并如实报出不阻断；
   真正待厘清的是规则文本与实现的边界（是否把坑1 收窄到背景子句），那需要先有
   正面样本证明调色板色相词会造成泛黄。门禁已把「命中数 ≤5」设为债务上限，涨了就红。
+- `grid_metrics` 对**细缝拼版**数不准格数：缩略到 256 宽后缝会消失，实测 4px 缝的 3×3
+  被读成 4 格。修它要改缩略比例（牵动所有量测指标的取值），越出本轮范围；
+  实用含义是「`--expect-cells` 只在缝看得见时才可信」。
 - **`pick_wm` 的 `inpaint` 用了全图而只改右下 ROI（约 2.8x 加速空间）——刻意不动**。
   理由与 `metric_flat` 相反：`cv2.inpaint` 的填充靠**传播**，局部性没有可陈述的上界，
   裁窗是否等价只能靠逐张实测去撞，而没法用一条支撑半径就证。给「疑难图才跑」的排障脚本

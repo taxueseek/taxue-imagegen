@@ -745,7 +745,46 @@ def test_metric_flat_crop_equivalence():
           f"sub={sub_rows} ref={ref_rows} ry0={ry0} —— 有消费落在裁窗之外")
 
 
+# ── 一类 bug：同一个「读不出来」，两种文件两种行为 ──────────────────
+def test_imread_empty_buffer_is_none():
+    """空缓冲区必须与「截断文件」走同一条路：返回 None，不从 OpenCV 抛。
+
+    2026-09-23 真实边界验收实测：`dewm_v10.py zero.png`（0 字节）崩栈 rc=1，
+    而同族的 `dewm_v10.py trunc.png`（截断）走的是「skip (unreadable)」正常分支。
+    根因在共享读图口 `dewm_io.imread_any`：`cv2.imdecode` 对**空缓冲区**会抛
+    `cv2.error: (-215:Assertion failed) !buf.empty()`，而截断文件只返回 None——
+    于是调用方那套 `if img is None` 兜底被整条绕过。
+
+    判据两层：
+      ① 单元：`imread_any` 对 0 字节文件返回 None 且不抛；
+      ② 行为：拿 0 字节文件跑一次真实脚本，stderr 不得出现 `cv2.error`（崩栈的指纹），
+         且输出要落进「读不出来」的正常分支。
+    """
+    import tempfile
+    io = load("dewm_io")
+    with tempfile.TemporaryDirectory() as d:
+        empty = os.path.join(d, "zero.png")
+        open(empty, "wb").close()
+        try:
+            got = io.imread_any(empty)
+            raised = None
+        except Exception as e:      # noqa: BLE001
+            got, raised = "RAISED", e
+        check("imread_any 对 0 字节文件返回 None（不抛）", got is None,
+              f"得 {got!r}" + (f"，抛出 {type(raised).__name__}: {raised}" if raised else ""))
+
+        r = subprocess.run([sys.executable, os.path.join(HERE, "dewm_v10.py"),
+                            empty, "--out", os.path.join(d, "out")],
+                           capture_output=True, text=True, timeout=120)
+        blob = (r.stdout or "") + (r.stderr or "")
+        check("0 字节文件不再甩 cv2 崩栈", "cv2.error" not in blob,
+              f"stderr 仍是崩栈：{blob[-160:]}")
+        check("0 字节文件走「读不出来」的正常分支", "unreadable" in blob or "skip" in blob,
+              f"输出看不出是读失败：{blob[-160:]}")
+
+
 TESTS = [test_overwrite_guard, test_imprint_input_hygiene,
+         test_imread_empty_buffer_is_none,
          test_metric_flat_crop_equivalence, test_batch_out_guard, test_solvability_guard, test_pick_wm_damage_aware,
          test_pick_wm_noop_policy, test_pick_wm_ambiguous_hold,
          test_audit_unique_keys, test_wm_metrics_reference_free,

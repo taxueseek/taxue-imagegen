@@ -42,8 +42,20 @@ IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 
 def imread_any(p):
-    """支持中文/空格路径的读图。"""
+    """支持中文/空格路径的读图。读不出来一律返回 None，**不从 OpenCV 抛异常**。
+
+    `cv2.imdecode` 对一个**空缓冲区**（0 字节文件、读空的文件）会直接抛
+    `cv2.error: (-215:Assertion failed) !buf.empty()`，而截断文件只是返回 None
+    （读图失败时 OpenCV 会先打一行 WARN，再给 None）。同一个「读不出来」，
+    两种文件给出两种行为——0 字节那种把调用方的 `if img is None` 兜底整条绕过，
+    直接把 traceback 甩给用户。2026-09-23 实测：`dewm_v10.py zero.png` 崩栈 rc=1，
+    而 `dewm_v10.py trunc.png` 走的是「skip (unreadable)」的正常分支。
+
+    这里是全族共用的唯一读图口，把空缓冲显式收敛成 None，两种情形就同一条路了。
+    """
     data = np.fromfile(p, dtype=np.uint8)
+    if data.size == 0:
+        return None
     return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
