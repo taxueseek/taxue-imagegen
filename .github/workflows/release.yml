@@ -1,0 +1,96 @@
+# 发布仓独有资产，不参与真源→发布仓的技能载荷同步（scripts/sync_release.sh 只同步
+# SKILL.md / CHANGELOG.md / references / scripts / sub-skills），因此改动不影响技能版本号。
+#
+# 推送版本标签（v*）时把标签变成可下载的包。日常校验走 validate.yml，两者互不重叠。
+
+name: Release
+
+# 只在版本标签上触发。日常开发走 validate.yml，这里只管「把标签变成可下载的包」。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # git archive 要按标签名取树，浅克隆拿不到
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install numpy + pillow + opencv + pyyaml
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy pillow opencv-python-headless pyyaml
+
+      # 门禁先行：和贡献者本地跑的是同一套脚本。红了就不发包——
+      # 一个跑不过自己测试的标签，不该有可下载产物。
+      - name: Gate — run the shared test suite
+        run: bash scripts/run_tests.sh
+
+      # 技能包只装「可安装载荷」。examples/ 与 assets/ 约 19 MB，是仓库展示资产，
+      # 装技能用不上；需要它们的人用 GitHub 自动生成的 Source code 归档。
+      # 内容直接由标签的跟踪树导出（git archive），不经工作区，天然排除
+      # __pycache__ / 运行日志 / _research 这些未跟踪的东西。
+      - name: Package the skill payload from the tag
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          OUT="taxue-imagegen-${TAG}.zip"
+          git archive --format=zip --prefix=taxue-imagegen/ -o "$OUT" "$TAG" \
+            SKILL.md CHANGELOG.md LICENSE references scripts sub-skills
+          shasum -a 256 "$OUT" > SHA256SUMS
+          cat SHA256SUMS
+          echo "--- 包内清单 ---"
+          unzip -l "$OUT" | tail -3
+
+      # 说明文字从 CHANGELOG 抽，保持单一真源——不在工作流里另写一份会漂移的副本。
+      - name: Build release notes from CHANGELOG
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[{re.escape(tag)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                        text, re.M | re.S)
+          if not m:
+              sys.exit(f"CHANGELOG 里找不到 {tag} 一节——先补 CHANGELOG 再打标签")
+          body = m.group(1).strip()
+          foot = (
+              "\n\n---\n\n"
+              "**安装**：下载 `taxue-imagegen-%s.zip`，解压后把 `taxue-imagegen/` 目录放进技能目录"
+              "（`~/.workbuddy/skills/`），依赖见 `scripts/requirements.txt`。"
+              "包的 SHA256 见随附的 `SHA256SUMS`。"
+              "需要成图样张与全部原图时用 Source code 归档。\n" % os.environ["GITHUB_REF_NAME"]
+          )
+          open("RELEASE_NOTES.md", "w", encoding="utf-8").write(body + foot)
+          print(f"notes: {len(body)} 字符")
+          PY
+
+      # release 已存在时（重跑标签、或标签推在人工建过的 release 之后）改为覆盖上传，
+      # 不让管道在「已经建好」这种良性状态上失败。--clobber 保证资产可更新。
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          ASSETS=("taxue-imagegen-${TAG}.zip" SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG 已存在：覆盖资产与说明"
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "$TAG" \
+              --notes-file RELEASE_NOTES.md \
+              --verify-tag
+          fi

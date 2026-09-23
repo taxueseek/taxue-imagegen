@@ -17,6 +17,7 @@
 Five types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, multi-grid sheet, or storyboard.
 
 [![Version](https://img.shields.io/badge/VERSION-1.21.2-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/taxueseek/taxue-imagegen?style=flat-square&labelColor=333&color=2ea44f&label=RELEASE)](https://github.com/taxueseek/taxue-imagegen/releases/latest)
 
 Runs only inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview). Generation goes through its ImageGen; slot fill and verification are scripts. The other three skills in the family ship prompts you can copy anywhere; this one ships a pipeline that lives in WorkBuddy.
 
@@ -94,6 +95,8 @@ Install:
 ```bash
 npx skills add taxueseek/taxue-imagegen
 ```
+
+No CLI required: download `taxue-imagegen-v*.zip` from [Releases](https://github.com/taxueseek/taxue-imagegen/releases/latest), unzip it, and drop the `taxue-imagegen/` folder into your skills directory (`~/.workbuddy/skills/`). The archive holds the installable payload only, exported straight from the release tag's tracked tree (byte-identical), with `SHA256SUMS` alongside.
 
 Script dependencies (only needed if you use the CLIs standalone — already present inside a WorkBuddy session):
 

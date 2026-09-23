@@ -33,6 +33,12 @@ __pycache__/
 build/
 dist/
 
+# Release build artifacts — produced by .github/workflows/release.yml (in CI) and
+# uploaded as release assets. Never commit them from a local dry-run.
+/taxue-imagegen-v*.zip
+/SHA256SUMS
+/RELEASE_NOTES.md
+
 # Editor / IDE
 .vscode/
 .idea/

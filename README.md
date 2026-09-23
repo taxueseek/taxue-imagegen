@@ -17,6 +17,7 @@
 五种类型、四种工作流——把一句话做成稳定的封面、群像、包装样机、多格组图或分镜。
 
 [![Version](https://img.shields.io/badge/VERSION-1.21.2-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/taxueseek/taxue-imagegen?style=flat-square&labelColor=333&color=2ea44f&label=RELEASE)](https://github.com/taxueseek/taxue-imagegen/releases/latest)
 
 只在 [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview) 里跑通。出图走它的 ImageGen，填槽和验收由脚本完成。同系列另外三个技能交的是提示词本身，复制到哪都能用；本技能交的是一条跑在 WorkBuddy 里的流水线。
 
@@ -92,6 +93,8 @@
 ```bash
 npx skills add taxueseek/taxue-imagegen
 ```
+
+不用 CLI 也行：从 [Releases](https://github.com/taxueseek/taxue-imagegen/releases/latest) 下载 `taxue-imagegen-v*.zip`，解压后把 `taxue-imagegen/` 目录整个放进技能目录（`~/.workbuddy/skills/`）。包内只有可安装载荷，由发布标签的跟踪树直接导出、与标签逐字节一致，`SHA256SUMS` 随附可校验。
 
 只用 CLI 时再装依赖（WorkBuddy 会话内已就绪）：
 
