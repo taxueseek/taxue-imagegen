@@ -55,7 +55,7 @@ def main():
         print(__doc__.strip())
         return 0
     if not IMGS:
-        sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
+        sys.exit(2)   # 2 = 用法/环境错误（1 在本技能约定里是「blocker」，不要混用）
     a, (x0, y0) = v8mod.load_template(1024, 1536)
     print(f"{'底子':<14} {'k_true':>6} | {'k̂ (mask>0.05)':>14} {'k̂ (mask>0.01)':>14} {'k̂/mask0.01':>11}")
     print("-" * 60)

@@ -42,19 +42,8 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dewm_io import imread_any, imwrite_any, safe_target, add_common_args, save_crop  # noqa: E402
+from dewm_io import load_template  # noqa: E402  （模板几何的唯一真源，见 dewm_io）
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "wm_alpha_1024.npz")
-BASE_W, BASE_H = 1024, 1536
-
-
-def load_template(W, H):
-    z = np.load(TEMPLATE_PATH)
-    tm, tbox = z["alpha"], z["box"]
-    s = W / BASE_W
-    bw, bh = int(round((tbox[2] - tbox[0]) * s)), int(round((tbox[3] - tbox[1]) * s))
-    a = cv2.resize(tm, (bw, bh), interpolation=cv2.INTER_LINEAR)
-    return a, (W - bw, H - bh)
 
 def inpaint_watermark(img, inpaint_radius=3):
     H, W = img.shape[:2]

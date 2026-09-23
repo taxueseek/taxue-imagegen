@@ -25,7 +25,6 @@
 `die()` 会打印：缺哪个包 → 两条修复路径（换解释器 / 装包）→ 本机可用的解释器长什么样，
 然后以退出码 2 结束（与 argparse 的用法错误区分开：2 也是「环境没准备好」）。
 """
-import importlib
 import os
 import re
 import subprocess
@@ -130,26 +129,6 @@ def die(exc, modules=None):
         print("   ② 或按上面的报错装齐依赖后重跑", file=sys.stderr)
     print(f"   当前解释器：{sys.executable}", file=sys.stderr)
     raise SystemExit(2)
-
-
-def need(*names):
-    """按需导入一组模块；缺任何一个就走 `die()` 的人话分支。
-
-    返回 {名字: 模块}。给「只想在函数里用重型依赖」的脚本用，避免顶层 import
-    把整个文件变成不可导入（`run_tests.sh` 的 import-check 会连坐）。
-    """
-    out = {}
-    missing = []
-    for n in names:
-        try:
-            out[n] = importlib.import_module(n)
-        except ImportError:  # noqa: PERF203
-            missing.append(n)
-    if missing:
-        class _E(ImportError):
-            name = missing[0]
-        die(_E(), modules=missing)
-    return out
 
 
 def best_interpreter():

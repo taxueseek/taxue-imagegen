@@ -228,6 +228,7 @@ def main():
         files.extend(glob.glob(f) or [f])
 
     wrote = []
+    failed = 0
     for f in files:
         try:
             t = process(f, args, colors)
@@ -235,11 +236,21 @@ def main():
                 wrote.append(t)
                 print(f"ok    {os.path.basename(f)} -> {t}")
         except SystemExit as e:
+            failed += 1
             print(f"skip  {f}: {e}")
         except Exception as e:
+            failed += 1
             print(f"err   {f}: {type(e).__name__}: {e}")
     if wrote:
         print(f"\n共处理 {len(wrote)} 张")
+    # 有输入却一张都没产出（或批量里出错）时不能静默 return 0（2026-09-23 修）：
+    # 此前所有分支都不设退出码，于是「9 张全部读不了 / 全部抛异常」也是一句
+    # 「共处理 0 张」+ 退出码 0，批量流程会把没做当成做好了。
+    # 退出码 4 = 工具/输入错误（与 postcheck 的 4 同义），**不要据此当 blocker**。
+    if failed:
+        print(f"\n{failed}/{len(files)} 张未能处理（工具/输入错误，**不是 blocker**）",
+              file=sys.stderr)
+        sys.exit(4)
 
 
 if __name__ == "__main__":

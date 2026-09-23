@@ -783,10 +783,166 @@ def test_imread_empty_buffer_is_none():
               f"输出看不出是读失败：{blob[-160:]}")
 
 
+def test_v11_illcond_guard_uses_preclip_alpha():
+    """去水印族的「1−α 过小」守卫（越界就退回 inpaint 背景）必须用**裁剪前**的 α 判定。
+
+    2026-09-23（对抗性审查）：`dewm_v11._remove_at` 里先 `alpha = np.clip(k*a, 0, ALPHA_GUARD)`，
+    再写 `ill_cond = alpha > ALPHA_GUARD` —— 恒为 False，这条守卫**从未生效过**。
+    v8 / v10 用的是 `alpha_raw`（裁剪前的 k·a），只有 v11 掉了这一半判据。
+    丢掉它意味着 α 被夹到 0.92（1−α = 0.08，反解误差被放大 12.5 倍）的像素
+    不再退回背景，而是照直写进产物。
+
+    夹具要让判据可分辨：取 `force_k` 使 k·a 明显越过 ALPHA_GUARD，
+    并让整图近白——于是 `rec = (wm − 0.92·255)/0.08` 仍落在 [0,255] 内，
+    **只有 ill_cond 能判「不稳定」**。守卫失效时这些像素一个都不会被判出来。
+    """
+    import numpy as np
+    v11 = load("dewm_v11")
+    v8 = load("dewm_v8")
+    H, W = 1536, 1024
+    a, (x0, y0) = v8.load_template(W, H)
+    guard = v11.V10.V9.ALPHA_GUARD
+    img = np.full((H, W, 3), 250, np.uint8)
+    _, st = v11._remove_at(img, a, x0, y0, force_k=20.0, fuse=False, iters=0)
+    check("夹具前提：k·a 确实越过了 α 上限（否则测不到 ill_cond）",
+          float((20.0 * a).max()) > guard, f"max(k·a)={float((20.0*a).max()):.3f} ≤ {guard}")
+    check("夹具前提：越界像素全在 [0,255] 内（排除 out_of_bounds 干扰）",
+          st["unstable_px"] == 0 or st["unstable_px"] >= st["core_px"],
+          f"unstable_px={st['unstable_px']} core_px={st['core_px']}")
+    check("v11「1−α 过小」守卫用裁剪前的 α（恒不触发 = 守卫失效）",
+          st["unstable_px"] > 0,
+          f"unstable_px={st['unstable_px']}（期望 ≥ core_px={st['core_px']}）—— "
+          f"判据取到了已裁剪的 alpha，永远为 False")
+
+
+def test_template_box_fits_any_canvas():
+    """α 模板框必须永远落在画面内 —— 否则一张畸变尺寸的图能把整条验收打崩。
+
+    2026-09-23：`load_template` 按宽度等比缩放模板框（1024 宽时 224×106），
+    画面比框矮或比框窄时 `H - bh` / `W - bw` 变负，调用方拿负偏移去切片 → 形状不符：
+      1600×100 实测 `ValueError: could not broadcast input array from shape (166,350) …`（postcheck）
+      1×1     实测 `cv2.error`（`cv2.resize` 收到 0×0）
+    修复是把框夹进画面。夹取在**所有声明画幅上都是恒等变换**——这一点必须单独钉住，
+    否则「修边界」很容易顺手改坏正常路径（锚点偏一格就是水印定位全错）。
+
+    两条判据：
+      ① 声明画幅：模板尺寸与锚点必须与「不夹取」的算式逐位相同；
+      ② 退化画幅：全族 `remove_watermark` 不得抛异常（含 v6/v7 与实验版 v11~v13）。
+    """
+    import numpy as np
+    io = load("dewm_io")
+    v6, v7, v8, v9 = load("dewm"), load("dewm_v7"), load("dewm_v8"), load("dewm_v9")
+    v10, v11, v12, v13 = (load(n) for n in
+                          ("dewm_v10", "dewm_v11", "dewm_v12", "dewm_v13"))
+    with np.load(io.TEMPLATE_PATH) as z:
+        tbox = z["box"]
+
+    declared = [(1024, 1024), (1024, 1280), (1024, 1536), (1024, 1792),
+                (1152, 1536), (1536, 864), (1536, 1024)]
+    drift = []
+    for W, H in declared:
+        a, (x0, y0) = io.load_template(W, H)
+        s = W / io.BASE_W
+        bw = int(round((tbox[2] - tbox[0]) * s))
+        bh = int(round((tbox[3] - tbox[1]) * s))
+        if (a.shape[1], a.shape[0]) != (bw, bh) or (x0, y0) != (W - bw, H - bh):
+            drift.append(f"{W}x{H}: 得 a={a.shape} anchor=({x0},{y0})，"
+                         f"期望 {bw}x{bh}@({W-bw},{H-bh})")
+    check("声明画幅上模板框与「不夹取」逐位一致（边界修复不改正常路径）", not drift,
+          "；".join(drift[:3]))
+
+    # 退化为「贴边小框」也必须能跑完，不许抛
+    failures = []
+    for W, H in [(1600, 100), (100, 1600), (1, 1), (60, 40), (1024, 50)]:
+        img = np.full((H, W, 3), 250, np.uint8)
+        a, (x0, y0) = io.load_template(W, H)
+        if not (0 <= x0 and 0 <= y0 and a.shape[1] >= 1 and a.shape[0] >= 1
+                and x0 + a.shape[1] <= W and y0 + a.shape[0] <= H):
+            failures.append(f"{W}x{H} 框越界：a={a.shape} anchor=({x0},{y0})")
+            continue
+        for name, fn in (("v6", lambda: v6.remove_watermark(img)),
+                         ("v7", lambda: v7.inpaint_watermark(img)),
+                         ("v8", lambda: v8.remove_watermark(img)),
+                         ("v9", lambda: v9.remove_watermark(img)),
+                         ("v10", lambda: v10.remove_watermark(img)),
+                         ("v11", lambda: v11.remove_watermark(img)),
+                         ("v12", lambda: v12.remove_watermark(img)),
+                         ("v13", lambda: v13.remove_watermark(img))):
+            try:
+                fn()
+            except Exception as e:  # noqa: BLE001
+                failures.append(f"{W}x{H} {name}: {type(e).__name__}: {str(e)[:50]}")
+    check("退化画幅（1x1 / 1600x100 / 1024x50 …）全族去水印不抛异常", not failures,
+          "；".join(failures[:4]))
+
+    # 端到端：postcheck 不再把畸变尺寸报成工具错误
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "wide.png")
+        Image.new("RGB", (1600, 100), (250, 250, 250)).save(p)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "postcheck.py"), p,
+                            "--track", "A", "--text", "ok", "--no-log"],
+                           capture_output=True, text=True, timeout=120)
+        blob = (r.stdout or "") + (r.stderr or "")
+        check("postcheck 在畸变画幅上不再报 tool_error", "could not broadcast" not in blob
+              and "tool_error" not in blob, blob.strip()[-140:])
+        check("postcheck 畸变画幅退出码在判定域内（0/1/3）", r.returncode in (0, 1, 3),
+              f"rc={r.returncode}")
+
+
+def test_usage_errors_exit_2():
+    """用法/输入错误一律退出码 2，不得用 1。
+
+    本技能的退出码是**判定值**不是成败：1 = blocker / 有阻断项（postcheck 判 blocker、
+    preflight 有 BLOCK、fill_meta 有阻断）。用 `sys.exit("msg")` 表达「没给图片」，
+    退出码恰好是 1 —— 调用方（尤其 Agent）会把它读成「图有毛病」，
+    去重出图而不是修参数，白扣 5–10 积分。
+
+    这里只钉「空输入」这一类最常用的入口，覆盖三支独立路径：
+    目录扫空、glob 无匹配、路径不存在。
+    """
+    import tempfile
+    empty_dir = tempfile.mkdtemp()
+    cases = [
+        ("dewm_imprint.py", [os.path.join(empty_dir, "*.png")], "glob 无匹配"),
+        ("rmwm_light.py", [os.path.join(empty_dir, "*.png")], "glob 无匹配"),
+        ("measure.py", [os.path.join(empty_dir, "nope.png")], "路径不存在"),
+        ("pick_wm.py", [empty_dir], "目录扫空"),
+        ("audit_wm.py", [empty_dir], "目录扫空"),
+    ]
+    for script, argv, why in cases:
+        r = subprocess.run([sys.executable, os.path.join(HERE, script), *argv],
+                           capture_output=True, text=True, timeout=120)
+        check(f"{script} 空输入 → 退出码 2（{why}）", r.returncode == 2,
+              f"rc={r.returncode}（1 会被读成 blocker）；{(r.stderr or '').strip()[-120:]}")
+
+
+def test_batch_all_fail_nonzero():
+    """批量脚本「整批都没做成」必须回非 0，不能报成功。
+
+    `dewm2` / `rmwm` 原先逐图 try/except 只打印、**从不设退出码**：
+    9 张全部读不了也是一句「共处理 0 张」+ rc 0，批量流程会把「没做」当「做好了」。
+    （与 v1.22.1 修掉的 postcheck「工具失败被报成 blocker」同一类，方向相反。）
+
+    退出码 4 = 工具/输入错误（与 postcheck 的 4 同义）——**不是 blocker，不要重生**。
+    """
+    ghost = os.path.join(tempfile.gettempdir(), "definitely-not-here-9f3a.png")
+    for script in ("dewm2.py", "rmwm.py"):
+        r = subprocess.run([sys.executable, os.path.join(HERE, script), ghost],
+                           capture_output=True, text=True, timeout=180)
+        check(f"{script} 整批失败 → 非 0 退出码", r.returncode != 0,
+              f"rc={r.returncode} —— 全失败却报成功")
+        check(f"{script} 整批失败 → 退出码 4（未判定，不是 blocker）", r.returncode == 4,
+              f"rc={r.returncode}；(r.stderr or '').strip()[-120:]")
+
+
 TESTS = [test_overwrite_guard, test_imprint_input_hygiene,
          test_imread_empty_buffer_is_none,
          test_metric_flat_crop_equivalence, test_batch_out_guard, test_solvability_guard, test_pick_wm_damage_aware,
          test_pick_wm_noop_policy, test_pick_wm_ambiguous_hold,
          test_audit_unique_keys, test_wm_metrics_reference_free,
          test_v13_wiener_invariants, test_wm_auto_gate,
-         test_wm_auto_never_touches_original, test_missing_dep_message]
+         test_wm_auto_never_touches_original, test_missing_dep_message,
+         test_v11_illcond_guard_uses_preclip_alpha,
+         test_template_box_fits_any_canvas,
+         test_usage_errors_exit_2, test_batch_all_fail_nonzero]

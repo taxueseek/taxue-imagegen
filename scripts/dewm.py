@@ -57,24 +57,21 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dewm_io import imread_any, imwrite_any, safe_target, add_common_args, save_crop  # noqa: E402
+import dewm_io as _io  # noqa: E402
 
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "wm_alpha_1024.npz")
-BASE_W, BASE_H = 1024, 1536
+TEMPLATE_PATH = _io.TEMPLATE_PATH
+BASE_W, BASE_H = _io.BASE_W, _io.BASE_H
 
 
 def load_template(W, H):
-    """加载 α 模板并按宽度缩放、锚定右下角。"""
-    if not os.path.exists(TEMPLATE_PATH):
-        raise FileNotFoundError(f"缺少 α 模板: {TEMPLATE_PATH}")
-    z = np.load(TEMPLATE_PATH)
-    tm, tbox = z["alpha"], z["box"]
-    s = W / BASE_W
-    bw, bh = int(round((tbox[2] - tbox[0]) * s)), int(round((tbox[3] - tbox[1]) * s))
-    if abs(H / BASE_H - s) > 0.02:
+    """加载 α 模板（实现在 dewm_io，含「框夹进画面」的边界守卫）＋本脚本独有的尺寸警告。
+
+    警告只留在这里：v7/v8/v9 从来没有这条，把它一并搬进共享实现会让 1536x864
+    这类**合法**画幅每次调用都刷一行 stderr —— 那是误报，不是提醒。
+    """
+    if abs(H / BASE_H - W / BASE_W) > 0.02:
         print(f"warning: 尺寸 {W}x{H} 非 {BASE_W}x{BASE_H}，按宽度缩放锚定右下角，未经验证")
-    a = cv2.resize(tm, (bw, bh), interpolation=cv2.INTER_LINEAR)
-    return a, (W - bw, H - bh)
+    return _io.load_template(W, H)
 
 
 def remove_watermark(img):

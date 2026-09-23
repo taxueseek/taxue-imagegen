@@ -412,7 +412,7 @@ cat or dog or bird, no clothes on the animals, no figures cut off awkwardly by t
 
 工作区出图：`generated-images/An_extremely_dense__full_bleed_2026-09-06T09-01-27.png`
 
-| 指标 | 数值 | 阈值（类型 B） | 判定 |
+| 指标 | 数值 | 阈值（类型 B，**2026-09-06 旧口径，已撤**） | 判定 |
 |---|---|---|---|
 | white% | **4.9** | 30–65 | 满铺达成（类型 B 阈值不适用，这版要求白只在细缝） |
 | near% | 31.8 | — | — |
@@ -442,7 +442,7 @@ cat or dog or bird, no clothes on the animals, no figures cut off awkwardly by t
 
 出图：`generated-images/An_extremely_dense__full_bleed_2026-09-06T09-05-13.png`
 
-| 指标 | v1 | v2 | 阈值（类型 B） | 判定 |
+| 指标 | v1 | v2 | 阈值（类型 B，**2026-09-06 旧口径，已撤**） | 判定 |
 |---|---|---|---|---|
 | white% | 4.9 | **35.4** | 30–65 | ⚠️ 满铺回归：从「白只存活细缝」回到「标准类型 B 留白量」，密度大幅稀释 |
 | near% | 31.8 | 38.5 | — | — |

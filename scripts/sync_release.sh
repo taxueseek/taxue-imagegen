@@ -44,8 +44,15 @@ done
 [ "$SRC" != "$DEST" ] || { echo "refusing: SRC == DEST" >&2; exit 1; }
 
 # 注意：排除项不带尾斜杠——rsync 与 diff 都要认这几条，带斜杠只有 rsync 认
+# 必须与仓库根的 .gitignore「锚定在同步树上的模式」逐条对齐（2026-09-23 修，
+# 门禁 test_local_artifacts_excluded_from_release 就是这条对齐关系）：
+#   · `--exclude='_prompts'` **匹配不到** `_prompts_archive`——rsync 的模式不是前缀匹配，
+#     而 `_prompts_archive` 装的正是「已验证风格的提示词原文」；
+#   · `_calib_cache` 与 `wm_alpha_1024.npz.bak-*`（模板的本地备份）此前压根没列。
 EXCLUDES=(--exclude='.git' --exclude='.DS_Store' --exclude='__pycache__'
           --exclude='logs' --exclude='_prompts' --exclude='_prompts_ink'
+          --exclude='_prompts_archive' --exclude='_calib_cache'
+          --exclude='wm_alpha_1024.npz.bak-*'
           --exclude='.trash' --exclude='_research' --exclude='*.pyc')
 
 echo "SRC  = $SRC"

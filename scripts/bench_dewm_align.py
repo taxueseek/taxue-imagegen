@@ -51,30 +51,6 @@ CASES = [
 ]
 
 
-def inject_shift(orig, a, x0, y0, k_true, scale, C=255.0):
-    """把缩放后的 α 模板放到 (x0+dx, y0+dy) 处混合。返回 (水印图, 实际框)。"""
-    H, W = orig.shape[:2]
-    if scale != 1.0:
-        bw = int(round(a.shape[1] * scale))
-        bh = int(round(a.shape[0] * scale))
-        a2 = cv2.resize(a, (bw, bh), interpolation=cv2.INTER_LINEAR)
-    else:
-        a2 = a
-    px, py = x0 + (a.shape[1] - a2.shape[1]), y0 + (a.shape[0] - a2.shape[0])
-    # 锚定右下角语义：缩放后右下角对齐，再加平移
-    px = max(0, min(W - a2.shape[1], px + 0))
-    py = max(0, min(H - a2.shape[0], py + 0))
-    px = max(0, min(W - a2.shape[1], px))
-    py = max(0, min(H - a2.shape[0], py))
-    alpha = np.clip(k_true * a2[:, :, None], 0.0, 0.99)
-    sub = orig[py:py + a2.shape[0], px:px + a2.shape[1]].astype(np.float32)
-    wm_sub = alpha * C + (1.0 - alpha) * sub
-    out = orig.astype(np.float32).copy()
-    out[py:py + a2.shape[0], px:px + a2.shape[1]] = wm_sub
-    box = (px, py, px + a2.shape[1], py + a2.shape[0])
-    return np.clip(out, 0, 255).astype(np.uint8), box
-
-
 def metrics_psnr(rec, gt, box, base_box):
     """漂移框 ∪ 基准框 区域 PSNR。"""
     H, W = rec.shape[:2]
@@ -95,7 +71,7 @@ def main():
         print(__doc__.strip())
         return 0
     if not IMGS:
-        sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
+        sys.exit(2)   # 2 = 用法/环境错误（1 在本技能约定里是「blocker」，不要混用）
     a, (x0, y0) = v8mod.load_template(1024, 1536)
     print(f"α 模板 {a.shape}，基准锚点 ({x0},{y0})；对齐窗口 ±{v9mod.SEARCH_RADIUS}px，"
           f"尺度 {v9mod.SCALES}\n")

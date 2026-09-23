@@ -13,7 +13,7 @@ v8 解决了「强度失配」（平台逐图调不透明度 → 最小二乘拟
   ① 灰度 NCC（权重 0.5）——字形亮度结构与 α 模板相关
   ② Sobel 梯度 NCC（权重 0.3）——对白平衡/亮度漂移免疫，只看结构
   ③ 局部方差比（权重 0.2）——水印使局部方差下降，作为佐证
-  在右下角预期位置 ±28px 窗口、尺度 {0.92,0.96,1.0,1.04,1.08} 内搜索，
+  在右下角预期位置 ±28px 窗口、8 个尺度 {1.0,0.98,1.02,0.96,1.04,1.06,0.92,1.08} 内搜索，
   取综合分最高者作为 (x, y, scale)，再走 v8 的 k 拟合 + 守卫 + 定点回退。
   置信度 < 0.35 时回退基准位置并告警（可能无水印 / 反白款 → rmwm_light）。
 
@@ -44,10 +44,7 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dewm_io import imread_any, imwrite_any, safe_target, add_common_args, save_crop  # noqa: E402
-
-TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "wm_alpha_1024.npz")
-BASE_W, BASE_H = 1024, 1536
+from dewm_io import load_template  # noqa: E402  （模板几何的唯一真源，见 dewm_io）
 
 # v8 守卫参数（保持一致，便于消融）——v9.1：k̂ 下限放开到 0，
 # 强制 k̂≥0.2 会对干净图过减出暗影（F 用例实测损伤源）
@@ -61,18 +58,6 @@ SEARCH_RADIUS = 28          # 平移搜索半径（px）
 SCALES = (1.0, 0.98, 1.02, 0.96, 1.04, 1.06, 0.92, 1.08)
 W_SPATIAL, W_GRAD, W_VAR = 0.5, 0.3, 0.2
 CONF_THRESHOLD = 0.35
-
-
-def load_template(W, H):
-    if not os.path.exists(TEMPLATE_PATH):
-        raise FileNotFoundError(f"缺少 α 模板: {TEMPLATE_PATH}")
-    z = np.load(TEMPLATE_PATH)
-    tm, tbox = z["alpha"], z["box"]
-    s = W / BASE_W
-    bw = int(round((tbox[2] - tbox[0]) * s))
-    bh = int(round((tbox[3] - tbox[1]) * s))
-    a = cv2.resize(tm, (bw, bh), interpolation=cv2.INTER_LINEAR)
-    return a.astype(np.float32), (W - bw, H - bh)
 
 
 def _grad_mag(x):
@@ -194,9 +179,6 @@ def _remove_at(img, a, x0, y0, C=255.0, alpha_guard=ALPHA_GUARD, force_k=None):
     r2 = 1.0 - ss_res / ss_tot
     k = float(force_k) if force_k is not None else float(np.clip(k_raw, *K_RANGE))
 
-    alpha_raw = k * a3
-    alpha = np.clip(alpha_raw, 0.0, alpha_guard)
-    rec = (sub_wm - alpha * C) / (1.0 - alpha)
     alpha_raw = k * a3
     alpha = np.clip(alpha_raw, 0.0, alpha_guard)
     rec = (sub_wm - alpha * C) / (1.0 - alpha)

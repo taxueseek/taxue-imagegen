@@ -138,12 +138,27 @@ def main():
     for p in a.files:
         paths += sorted(glob.glob(p)) if any(c in p for c in "*?[") else [p]
     if not paths:
-        sys.exit("no input files")
+        print("rmwm_light: 没有输入文件", file=sys.stderr)
+        sys.exit(2)
     box = tuple(int(v) for v in a.box.split(","))
     if not a.check and len(paths) > 1 and os.path.splitext(a.out)[1].lower() in (".png", ".jpg", ".jpeg", ".webp"):
-        sys.exit("错误：--out 传的是文件名但输入了多张图，结果会互相覆盖；请改传目录")
+        print("错误：--out 传的是文件名但输入了多张图，结果会互相覆盖；请改传目录",
+              file=sys.stderr)
+        sys.exit(2)
+    failed = 0
     for p in paths:
-        process(p, a.out, box, a.thresh, a.kernel, a.dilate, a.check, a.force)
+        # 逐图兜住异常（2026-09-23 修）：`process` 会从 `imread_any` 抛 IOError
+        # （文件损坏/截断），此前直接冒泡 → traceback + 退出码 1，而 1 在本技能约定里
+        # 是「blocker」。一张读不了图把整批判成「图有毛病」，正是 postcheck 修过的那一类。
+        try:
+            process(p, a.out, box, a.thresh, a.kernel, a.dilate, a.check, a.force)
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            print(f"err   {os.path.basename(p)}: {type(e).__name__}: {e}", file=sys.stderr)
+    if failed:
+        print(f"\n{failed}/{len(paths)} 张未能处理（工具/输入错误，**不是 blocker**）",
+              file=sys.stderr)
+        sys.exit(4)
 
 if __name__ == "__main__":
     _log.run("rmwm_light", main)

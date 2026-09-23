@@ -77,7 +77,7 @@ def main():
         print(__doc__.strip())
         return 0
     if not IMGS:
-        sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
+        sys.exit(2)   # 2 = 用法/环境错误（1 在本技能约定里是「blocker」，不要混用）
     a, (x0, y0) = v8mod.load_template(1024, 1536)
     print(f"α 模板: shape={a.shape} max={a.max():.3f} 锚点右下角 ({x0},{y0})")
     print(f"测试: {len(IMGS)} 种底子 × {len(K_TRUES)} 种不透明度 = {len(IMGS)*len(K_TRUES)} 组\n")

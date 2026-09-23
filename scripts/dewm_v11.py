@@ -138,14 +138,20 @@ def _remove_at(img, a, x0, y0, C_=C, fuse=False, force_k=None, iters=DARK_ITERS)
     r2 = 1.0 - ss_res / ss_tot
     k = float(force_k) if force_k is not None else float(np.clip(k_raw, *V10.V9.K_RANGE))
 
-    alpha = np.clip(k * a, 0.0, V10.V9.ALPHA_GUARD)
+    alpha_raw = k * a
+    alpha = np.clip(alpha_raw, 0.0, V10.V9.ALPHA_GUARD)
     # ← v11 新增：不依赖 inpaint 的暗区迭代修正
     alpha = refine_alpha_dark(sub_wm, alpha, a, iters=iters)
 
     a3 = alpha[:, :, None]
     rec = (sub_wm - a3 * C_) / (1.0 - a3)
     out_of_bounds = (rec < -1.0) | (rec > 256.0)
-    ill_cond = alpha > V10.V9.ALPHA_GUARD
+    # 病态判据必须取 **裁剪前** 的 α（2026-09-23 修）。`alpha` 在上面已被
+    # `np.clip(..., ALPHA_GUARD)` 夹住、`refine_alpha_dark` 返回时又夹了一次，
+    # 所以 `alpha > ALPHA_GUARD` 恒为 False —— 这条守卫此前从未生效过，
+    # 与 v8/v10 的口径（用 alpha_raw）不一致。1−α 过小时反解会被 1/(1−α) 放大，
+    # 那些像素本该退回 inpaint 背景，此前只会走 out_of_bounds 那半个判据。
+    ill_cond = alpha_raw > V10.V9.ALPHA_GUARD
     unstable = out_of_bounds.any(axis=2) | ill_cond
     base = np.where(unstable[:, :, None], sub_bg, rec)
 

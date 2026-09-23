@@ -40,6 +40,40 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
 CLEAN_SUBDIR = "_clean"
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
+# ── α 模板（水印几何的唯一真源）────────────────────────────────────
+# 2026-09-23 收口：`load_template` 此前在 dewm / dewm_v7 / dewm_v8 / dewm_v9 里
+# 各有一份**逐字等价**的副本（npz 里 alpha 本就是 float32，只有 dewm.py 多打一行
+# 尺寸警告），于是同一条几何假设散在四处、改一处要记得改四处。全族（v10/v11/v12/v13、
+# audit_wm、wm_auto、pick_wm、metric_flat 与各 bench）都经这里取模板，收在此处即全局生效。
+TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "wm_alpha_1024.npz")
+BASE_W, BASE_H = 1024, 1536
+
+
+def load_template(W, H):
+    """加载 α 模板并按宽度缩放、锚定右下角。返回 (α 模板 float32, (x0, y0))。
+
+    **框必须夹进画面**（2026-09-23 修，一类崩溃的根）：模板框按宽度等比缩放
+    （1024 宽时 224×106），画面比它矮或比它窄时 `H - bh` / `W - bw` 变负，
+    调用方拿负偏移去切片 → 真实形状不符，报
+    `ValueError: could not broadcast input array from shape (166,350) into …`（postcheck）
+    或 `cv2.error`（dewm_v10 / pick_wm）—— 一张畸变尺寸的图能把整条验收打崩。
+    实测 1600×100 得 y0=-66、1×1 得 bh=0（`cv2.resize` 直接报错）。
+
+    夹取在**所有声明画幅上都是恒等变换**（1024x1024 / 1280 / 1536 / 1792 / 1152x1536 /
+    1536x864 / 1536x1024 实测 fits=YES），所以正常路径零行为变化；只有装不下时才退化成
+    「贴边小框」——那种尺寸下模板与真实水印本就不匹配，检测会自然判「无水印」。
+    """
+    if not os.path.exists(TEMPLATE_PATH):
+        raise FileNotFoundError(f"缺少 α 模板: {TEMPLATE_PATH}")
+    with np.load(TEMPLATE_PATH) as z:
+        tm, tbox = z["alpha"], z["box"]
+    s = W / BASE_W
+    bw = max(1, min(int(round((tbox[2] - tbox[0]) * s)), W))
+    bh = max(1, min(int(round((tbox[3] - tbox[1]) * s)), H))
+    a = cv2.resize(tm, (bw, bh), interpolation=cv2.INTER_LINEAR)
+    return a.astype(np.float32), (W - bw, H - bh)
+
 
 def imread_any(p):
     """支持中文/空格路径的读图。读不出来一律返回 None，**不从 OpenCV 抛异常**。

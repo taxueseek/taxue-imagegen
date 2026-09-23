@@ -687,6 +687,124 @@ def test_prompt_archive():
 
 
 
+def test_metrics_vectorized_equivalent():
+    """`measure.metrics` 的数值必须与「逐像素朴素实现」逐字段一致。
+
+    2026-09-23：把 metrics 从「展开成 9.8 万个 RGB 三元组、对同一批像素做十几趟
+    `min()/max()`」改成 PIL 的 C 层算子——`ImageChops` 出 min/max 通道、直方图出分布、
+    `ImageStat.Stat(im, mask)` 出带掩膜均值。1024×1536 单次 126 ms → 34 ms，
+    这是 postcheck 默认路径里最大的一笔纯 Python 开销。
+
+    重写必须钉等价性：**快而错是最坏的结果**。参照实现就是改动前那一版，
+    在原式与新版都覆盖的输入上逐字段比对。
+
+    边界必须覆盖，且各对应一处真实陷阱：
+      · 全黑图 → `base = 0`，`base - 8` 为负 —— 直方图切片会退化成**负索引**，
+        实测把某张真图的 `paper%` 从 0.2% 报成 100%（`_count_gt` 的夹位就是为它加的）；
+      · 全白图 → `base = 255`，`240 + 1` 越界 —— 不夹位会把「比白更白」算成有像素。
+    只用中间调夹具的话，这两条都测不到。
+    """
+    import random
+    import tempfile
+    from PIL import Image
+    met = load("measure")
+
+    def naive(path):
+        """改动前的实现（逐像素、多趟扫描）——等价性的参照。"""
+        from PIL import ImageStat
+        im = Image.open(path).convert("RGB")
+        W, H = im.size
+        scale = 256.0 / W
+        small = im.resize((256, max(1, int(H * scale))), Image.LANCZOS)
+        try:
+            px = list(small.get_flattened_data())
+        except AttributeError:
+            px = list(small.getdata())
+        n = len(px)
+        white = [p for p in px if min(p) > 240]
+        near = [p for p in px if min(p) > 215]
+        mins = sorted(min(p) for p in px)
+        base = float(mins[len(mins) // 2])
+        lo_zone = max(215, base - 8)
+        zone = [p for p in px if min(p) > lo_zone] or near or white
+        wr = sum(p[0] for p in zone) / max(len(zone), 1)
+        wb = sum(p[2] for p in zone) / max(len(zone), 1)
+        sat = sum(max(p) - min(p) for p in px if max(p) - min(p) > 8) / n
+        row = {"base": base, "white%": len(white) / n * 100,
+               "paper%": sum(1 for p in px if min(p) > base - 8) / n * 100,
+               "near%": len(near) / n * 100, "R-B": wr - wb, "sat": sat}
+        top = im.crop((int(W * 0.20), int(H * 0.04), int(W * 0.80), int(H * 0.25)))
+        st = ImageStat.Stat(top)
+        r, g, b = st.mean
+        row["top_R"], row["top_G"], row["top_B"] = r, g, b
+        row["top_R-B"] = r - b
+        row["top_noise"] = sum(st.stddev) / 3
+        row["top_dev"] = abs((r + g + b) / 3 - base)
+        try:
+            tpx = list(top.get_flattened_data())
+        except AttributeError:
+            tpx = list(top.getdata())
+        tn = max(len(tpx), 1)
+        row["top_dark%"] = sum(1 for p in tpx if min(p) < 150) / tn * 100
+        row["top_white%"] = sum(1 for p in tpx if min(p) > 240) / tn * 100
+        row["top_zone%"] = sum(1 for p in tpx if min(p) > max(215, base - 8)) / tn * 100
+        return row
+
+    rng = random.Random(0)
+    fields = ("base", "white%", "paper%", "near%", "R-B", "sat",
+              "top_R", "top_G", "top_B", "top_R-B", "top_noise", "top_dev",
+              "top_dark%", "top_white%", "top_zone%")
+    worst, cases = {}, []
+    with tempfile.TemporaryDirectory() as d:
+        # 全黑 / 全白 / 纸底 / 渐变（含彩色）/ 随机噪声
+        cases.append(("all-black", Image.new("RGB", (800, 600), (0, 0, 0))))
+        cases.append(("all-white", Image.new("RGB", (800, 600), (255, 255, 255))))
+        cases.append(("paper", Image.new("RGB", (1024, 1536), (236, 232, 222))))
+        grad = Image.new("RGB", (900, 1200))
+        gp = grad.load()
+        for y in range(1200):
+            for x in range(900):
+                gp[x, y] = (x % 256, y % 256, (x + y) % 256)
+        cases.append(("gradient", grad))
+        noise = Image.new("RGB", (1024, 1536))
+        np_ = noise.load()
+        for y in range(1536):
+            for x in range(1024):
+                np_[x, y] = (rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255))
+        cases.append(("noise", noise))
+
+        for name, im in cases:
+            p = os.path.join(d, name + ".png")
+            im.save(p)
+            ref, got = naive(p), met.metrics(p, True)[1]
+            bad = [f for f in fields if abs(ref[f] - got[f]) > 1e-9]
+            for f in fields:
+                worst[f] = max(worst.get(f, 0.0), abs(ref[f] - got[f]))
+            check(f"metrics 与朴素实现逐字段一致（{name}）", not bad,
+                  f"不一致字段：{[(f, round(ref[f], 4), round(got[f], 4)) for f in bad][:4]}")
+
+    # 边界值单独钉住：这两处正是直方图切片会踩到负索引 / 越界的地方。
+    # 注意**不能凭直觉写期望值**——全黑图 base=0 ⇒ 原式 `min(p) > -8` 恒真 ⇒ paper% 是 100
+    # （不是 0）。所以期望值一律取自朴素参照，而不是「应该是多少」的印象。
+    # 真正要防的是「既非 0 也非 100 的错数」：不加夹位时 `hist[t+1:]` 在负 t 下退化成
+    # 求最后几档之和，实测把一张真图的 paper% 报成 0.217%。
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "black.png")
+        Image.new("RGB", (400, 400), (0, 0, 0)).save(p)
+        row = met.metrics(p, True)[1]
+        ref = naive(p)
+        check("全黑图（base=0）paper% 与朴素实现一致", row["paper%"] == ref["paper%"],
+              f"paper%={row['paper%']} 参照={ref['paper%']} base={row['base']} "
+              f"—— 直方图切片落到负索引了")
+        p = os.path.join(d, "white.png")
+        Image.new("RGB", (400, 400), (255, 255, 255)).save(p)
+        row = met.metrics(p, True)[1]
+        ref = naive(p)
+        check("全白图（base=255）top_white% 与朴素实现一致",
+              row["top_white%"] == ref["top_white%"] == 100.0,
+              f"top_white%={row['top_white%']} 参照={ref['top_white%']}")
+
+
 TESTS = [test_prompt_archive, test_postcheck_verdict,
          test_cli_help,
          test_top_noise_not_blocker,
@@ -698,4 +816,5 @@ TESTS = [test_prompt_archive, test_postcheck_verdict,
          test_log_header_migrated,
          test_exit_policy_precedence,
          test_box_mean_window_is_centered,
-         test_grid_metrics_refuses_unreliable_parse]
+         test_grid_metrics_refuses_unreliable_parse,
+         test_metrics_vectorized_equivalent]

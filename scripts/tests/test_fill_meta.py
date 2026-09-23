@@ -63,10 +63,8 @@ def test_all_tracks_run_embedded_preflight():
     """
     fm_path = os.path.join(HERE, "fill_meta.py")
     src = open(fm_path, encoding="utf-8").read()
-    missing = [t for t in ("A", "B", "C", "E")
-               if f'run_preflight(' not in src
-               or f'"{t}")' not in src and f'"{t}", ' not in src]
-    # 更精确：逐 track 检查是否有把该 track 当第二参数的调用
+    # 逐 track 检查是否有把该 track 当第二参数的调用（前一版先写了一条宽松判据又被
+    # 下一行整条覆盖，读起来像两条验算、实际只有一条在跑，2026-09-23 删掉死代码）
     missing = [t for t in ("A", "B", "C", "E")
                if not re.search(r'run_preflight\([^)]*,\s*"%s"' % t, src)]
     check("四个类型都接了内嵌 preflight（静态判据）", not missing,

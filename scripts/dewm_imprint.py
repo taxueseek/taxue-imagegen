@@ -79,7 +79,12 @@ def main():
         files.extend(sorted(glob.glob(pat)) or [pat])
     files = [f for f in files if "_textband" not in f]
     if not files:
-        sys.exit("no input")
+        # 用法/输入错误一律退出码 2（与 _env.die、fill_meta.fail、explore.fail 同码）。
+        # 原先是 `sys.exit("no input")` —— 那是退出码 **1**，而 1 在本技能的约定里
+        # 表示「blocker / 有阻断项」（postcheck 判 blocker、preflight 有 BLOCK、fill_meta
+        # 有阻断）。把自己的入参写错报成「图的毛病」，会让调用方去查图而不是查参数。
+        print("dewm_imprint: 没有输入文件", file=sys.stderr)
+        sys.exit(2)
 
     ims = []
     for f in files:
@@ -89,13 +94,16 @@ def main():
         # （值域 40000–60000）产出 **100% 纯白的图**，而脚本照旧打印 `[ok]`——
         # 静默产出坏图并报成功，比直接报错坏得多。要 8 位输入就明说。
         if im.mode in ("I", "I;16", "I;16B", "I;16L", "I;16N", "F"):
-            sys.exit(f"[abort] {os.path.basename(f)} 是 {im.mode}（超过 8 位）。"
-                     f"本脚本只处理 8 位图：直接 convert('RGB') 会把它按 255 截断、整张变纯白，"
-                     f"而输出仍会被当成成功。请先降到 8 位（或换 8 位原图）再跑。")
+            print(f"[abort] {os.path.basename(f)} 是 {im.mode}（超过 8 位）。"
+                  f"本脚本只处理 8 位图：直接 convert('RGB') 会把它按 255 截断、整张变纯白，"
+                  f"而输出仍会被当成成功。请先降到 8 位（或换 8 位原图）再跑。",
+                  file=sys.stderr)
+            sys.exit(2)
         ims.append(im.convert("RGB"))
     sizes = {im.size for im in ims}
     if len(sizes) != 1:
-        sys.exit(f"尺寸不一致，无法跨图统计：{sizes}（请按系列分批）")
+        print(f"尺寸不一致，无法跨图统计：{sizes}（请按系列分批）", file=sys.stderr)
+        sys.exit(2)
     w, h = sizes.pop()
     x0, y0, x1, y1 = (tuple(int(v) for v in args.roi.split(",")) if args.roi
                       else (int(w * 0.85), int(h * 0.88), w, h))

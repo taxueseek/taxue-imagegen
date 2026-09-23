@@ -437,7 +437,7 @@ def main():
 
     paths = collect(args.paths)
     if not paths:
-        sys.exit("未找到图片")
+        sys.exit(2)   # 2 = 用法/输入错误（1 在本技能约定里是「blocker」，不要混用）
 
     if args.ref:
         rows = audit_pair_table(args.ref, paths)

@@ -207,7 +207,7 @@ def main():
 
     paths = collect(args.paths)
     if not paths:
-        sys.exit("未找到图片")
+        sys.exit(2)   # 2 = 用法/输入错误（1 在本技能约定里是「blocker」，不要混用）
 
     print(f"{'图片':<24}{'v6':>8}{'v7':>8}{'v8':>8}{'v9':>8}  {'胜出':>5} {'旧判据':>7}")
     print("-" * 76)
@@ -249,6 +249,9 @@ def main():
 
         out_dir = (os.path.join(args.out_root, "_clean") if args.out_root
                    else os.path.join(os.path.dirname(os.path.abspath(p)), "_clean"))
+        # 只算一次（2026-09-23 修）：原先是 `elif ambiguous_pair(...)` 判一次、
+        # 分支体内再算一次取结果，同一对候选被比较两遍（纯浪费，且两行读起来像两件事）。
+        amb = ambiguous_pair(detail, winner)
         if detail[winner]["noop"]:
             # 胜出版本零改动 = 输出与原图逐位相同。写出它只会制造「已去水印」的假象，
             # 故不写产物；但要检查 _clean/ 里是否躺着旧算法的产物（可能含破坏）。
@@ -256,11 +259,10 @@ def main():
             prev = os.path.join(out_dir, name)
             if os.path.exists(prev):
                 stale.append((name, prev))
-        elif ambiguous_pair(detail, winner):
+        elif amb:
             # 数值自相矛盾：残留更低的候选被结构损伤分罚下。谁更好只能目检，
             # 故不动手 —— 尤其不能覆盖 _clean/ 里可能更优的旧产物。
-            amb, aresid = ambiguous_pair(detail, winner)
-            held.append((name, winner, detail[winner]["resid"], amb, aresid,
+            held.append((name, winner, detail[winner]["resid"], amb[0], amb[1],
                          os.path.exists(os.path.join(out_dir, name))))
         else:
             os.makedirs(out_dir, exist_ok=True)

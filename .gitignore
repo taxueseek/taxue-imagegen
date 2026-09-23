@@ -14,6 +14,8 @@ test-prompts.md
 # Generated prompt batches (build_storyboard output — regenerate on demand)
 scripts/_prompts/
 scripts/_prompts_ink/
+# 已验证风格的提示词原文归档——与真源侧 .gitignore 对齐
+scripts/_prompts_archive/
 
 # Local run log (postcheck writes here; not a source artifact)
 scripts/logs/

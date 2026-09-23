@@ -106,8 +106,6 @@ def process(path, out_dir=None, target=TARGET, flatten=FLATTEN, radius=BLUR_RADI
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(path))[0]
     dst = os.path.join(out_dir, base + "_paperwhite.png")
-    if not dst.endswith(".png"):
-        dst += ".png"
     Image.fromarray(out).save(dst)
     return report, dst
 

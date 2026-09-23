@@ -1,3 +1,16 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""文档与门禁域：front-matter（坑 31）、文档一致性、版本三方一致、
+常驻面分层契约、坑→检测层映射、隐私扫描、SKILL.md ↔ verify 子技能一致性，
+以及脚本 CLI 契约（每个用 argparse 的脚本，--help 必须能打印）。"""
+import glob
+import os
+import re
+import subprocess
+
+from _harness import HERE, ROOT, SURFACE_BUDGETS, check, load
+
+
 def test_referenced_files_exist():
     """活文档里提到的 `.md` 必须真的存在（悬空引用 = 搬出去没人读）。
 
@@ -19,6 +32,11 @@ def test_referenced_files_exist():
 
     范围只扫活文档（`SKILL.md` + `references/*.md`）：`CHANGELOG.md` 里出现旧文件名
     是**历史记录**，不该要求它存在（本次改名这件事正是靠它记下来的）。
+
+    2026-09-23 修（同行评审）：本函数此前**排在文件头之前**——shebang、coding cookie、
+    模块 docstring 与全部 import 都在它下面第 48 行起。定义在前不影响运行（函数体到调用时
+    才求值），但 `__doc__` 成了 None、coding 声明被忽略、shebang 失效。已按
+    「文件头 → import → 用例」的约定归位。
     """
     import glob as _glob
     import re as _re
@@ -43,19 +61,6 @@ def test_referenced_files_exist():
             dangling.append(f"{os.path.basename(p)}→{name}")
     check("活文档引用的 md 文件都存在（无悬空引用）", not dangling,
           "悬空：" + "、".join(sorted(set(dangling))[:5]))
-
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""文档与门禁域：front-matter（坑 31）、文档一致性、版本三方一致、
-常驻面分层契约、坑→检测层映射、隐私扫描、SKILL.md ↔ verify 子技能一致性，
-以及脚本 CLI 契约（每个用 argparse 的脚本，--help 必须能打印）。"""
-import glob
-import os
-import re
-import subprocess
-
-from _harness import HERE, ROOT, SURFACE_BUDGETS, check, load
 
 
 def test_repo_root_whitelist():
@@ -832,6 +837,81 @@ def test_horizontal_skeleton_passes_preflight():
 
 
 
+def test_local_artifacts_excluded_from_release():
+    """只留本机的归档/运行产物，不得被 `sync_release.sh` 同步进发布仓。
+
+    2026-09-23：`EXCLUDES` 里写着 `--exclude='_prompts'`，而 rsync 的模式**不是前缀匹配**，
+    匹配不到 `scripts/_prompts_archive/`；`scripts/_calib_cache/` 更是压根没列；
+    `scripts/wm_alpha_1024.npz.bak-*`（模板的本地备份）同样没列。
+    三者都在 `.gitignore` 里（= 明确「只留本机」），却会被 rsync 带进发布检出——
+    `_prompts_archive` 装的正是「已验证风格的提示词原文」，泄漏面是资产本身。
+
+    判据取 **`.gitignore` 里锚定在同步树上的模式**（以 `scripts/` / `references/` /
+    `sub-skills/` 开头），逐个要求 `EXCLUDES` 里有能匹配它的模式。
+    **不用「实际存在的被忽略文件」做输入**：干净检出（CI、新克隆）里那些目录本就
+    还不存在，按存在性判定会空转或假红——门禁必须在「这台机器还没产生任何本地
+    产物」时也成立，否则它只在开发机上有效。
+    """
+    import fnmatch
+    sh = open(os.path.join(ROOT, "scripts", "sync_release.sh"), encoding="utf-8").read()
+    m = re.search(r"EXCLUDES=\((.*?)\)", sh, re.S)
+    pats = re.findall(r"--exclude='([^']+)'", m.group(1)) if m else []
+    check("能解析出 sync_release.sh 的 EXCLUDES", bool(pats),
+          "正则失配——门禁本身失效了，不是内容没问题")
+
+    gi_path = os.path.join(ROOT, ".gitignore")
+    check("仓库根有 .gitignore", os.path.exists(gi_path), "无从判定哪些是本地产物")
+    if not os.path.exists(gi_path):
+        return
+    anchored = []
+    for line in open(gi_path, encoding="utf-8"):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith(("scripts/", "references/", "sub-skills/")):
+            anchored.append(s.rstrip("/"))
+    check("判据前提：.gitignore 里有锚定到同步树的模式", bool(anchored),
+          "一条都没有时本条会空转通过 —— 覆盖缺口要说出来")
+
+    def covered(entry):
+        # 与 rsync 的语义对齐：EXCLUDES 写的是「任意层级的这个名字」
+        last = entry.split("/")[-1]
+        return any(fnmatch.fnmatch(last, p) or fnmatch.fnmatch(entry, p) for p in pats)
+
+    leaked = [e for e in anchored if not covered(e)]
+    check("锚定在同步树上的本地产物都被排除在发布同步之外", not leaked,
+          "会被 rsync 带进发布仓：" + "、".join(leaked[:5]) + "（在 sync_release.sh 的 EXCLUDES 里补上）")
+
+
+def test_modules_have_file_header():
+    """每个 `.py` 的首条语句必须是模块 docstring —— 不许把函数写到文件头前面。
+
+    2026-09-23：`tests/test_docs_gates.py` 的 `test_referenced_files_exist` 曾被写在
+    **第 1 行**，shebang、coding cookie、模块 docstring 与全部 import 都在它下面第 48 行起。
+    定义在前不影响运行（函数体到调用时才求值），所以没有任何一条测试会红——但
+    `__doc__` 成了 None、PEP-263 coding 声明被忽略、shebang 失效。是「合并不小心、
+    头被顶到后面」这类事故，靠人眼扫不出来。
+
+    判据用 `ast`（首条语句是不是字符串字面量），不看字符串排版，稳且零误报。
+    """
+    import ast
+    files = sorted(glob.glob(os.path.join(HERE, "*.py"))) + \
+        sorted(glob.glob(os.path.join(HERE, "tests", "*.py")))
+    check("判据前提：扫到了脚本文件", len(files) >= 20, f"只扫到 {len(files)} 个")
+    bad = []
+    for p in files:
+        src = open(p, encoding="utf-8").read()
+        try:
+            tree = ast.parse(src)
+        except SyntaxError as e:
+            bad.append(f"{os.path.basename(p)}（语法错误：{e}）")
+            continue
+        if ast.get_docstring(tree) is None:
+            bad.append(os.path.basename(p))
+    check("每个脚本的首条语句都是模块 docstring（文件头没被顶到后面）", not bad,
+          "缺少文件头：" + "、".join(bad[:5]))
+
+
 TESTS = [test_referenced_files_exist, test_horizontal_skeleton_passes_preflight, test_skill_frontmatter_window_free, test_log_report_dual_count, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
@@ -840,4 +920,6 @@ TESTS = [test_referenced_files_exist, test_horizontal_skeleton_passes_preflight,
          test_test_modules_are_wired_exactly_once,
          test_description_covers_every_route,
          test_missing_dep_guard,
-         test_log_instrumentation, test_argparse_help_survives]
+         test_log_instrumentation, test_argparse_help_survives,
+         test_local_artifacts_excluded_from_release,
+         test_modules_have_file_header]

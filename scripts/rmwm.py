@@ -206,14 +206,23 @@ def main():
         if os.path.splitext(args.out)[1].lower() not in (".png", ".jpg", ".jpeg", ".webp"):
             os.makedirs(args.out, exist_ok=True)
 
+    failed = 0
     for p in args.images:
         if not os.path.isfile(p):
-            print(f"skip   文件不存在: {p}")
+            failed += 1
+            print(f"skip   文件不存在: {p}", file=sys.stderr)
             continue
         try:
             process(p, args)
         except Exception as e:  # noqa: BLE001
+            failed += 1
             print(f"error  {os.path.basename(p)}: {e}", file=sys.stderr)
+    # 逐图异常只打印、不设退出码时，「整批都失败」也会报成功（2026-09-23 修）。
+    # 与 postcheck 的约定一致：有图未判定 → 4，且文案说清这不是 blocker。
+    if failed:
+        print(f"\n{failed}/{len(args.images)} 张未能处理（工具/输入错误，**不是 blocker**）",
+              file=sys.stderr)
+        sys.exit(4)
 
 
 if __name__ == "__main__":
