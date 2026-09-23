@@ -120,8 +120,12 @@ jobs:
             gh release upload "$TAG" "${ASSETS[@]}" --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           else
+            # 只有「推标签」这条正常发布路径才把新 release 设为 Latest。手动给历史标签
+            # 补包时若也设，Latest 会被指到一个旧版本上（v1.21.1 补包时就这样抢过 v1.21.2）。
+            LATEST=()
+            if [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then LATEST=(--latest); fi
             gh release create "$TAG" "${ASSETS[@]}" \
               --title "$TAG" \
               --notes-file RELEASE_NOTES.md \
-              --verify-tag
+              --verify-tag "${LATEST[@]}"
           fi
