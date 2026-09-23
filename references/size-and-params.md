@@ -19,6 +19,17 @@
 | `image1` / `image2` / `image3` | 否 | 图生图输入，本地路径或 http(s) URL | 未实测（本技能两种类型都是文生图） |
 | `input_fidelity` | 否 | 与原图的风格贴合度（仅图生图） | 未实测 |
 
+> **本机实测补充（2026-09-23，WorkBuddy 客户端日志）**：文生图实际下发的模型是
+> `hunyuan-image-alpha`（`branch=hunyuan`），端点为 `https://copilot.tencent.com/v2/images/generations`，
+> 日志明写 `buildBaseRequestBody: … keys=[model,prompt,size,n]`——**基础请求体只有这四个键，
+> 全程日志里没有 `quality` 字样**。同一次出图（1024x1536）实际扣 **5.71 积分**。
+> 结论：`quality` 至少在这个 branch 上**未必真的上链**，不要把画质差异全部归因给 `quality`；
+> 需要确认时按坑 16 的思路做单变量小样对比，而不是照搬 `high = 更清晰` 的假设。
+> 另：客户端代码里 `resolveModel()` 的兜底值是 `hunyuan-image-v3.0`（文生图）/
+> `hunyuan-image-v2.0-general-edit`（图生图），但**云产品配置会把可用图像模型覆盖成
+> `hunyuan-image-alpha` / `hunyuan-image-alpha-edit`**——排查「到底用了哪个模型」要看
+> `~/.workbuddy/logs/<日期>/<工作区>.log` 里的 `[ImageService]` 行，不要只看本地 `product.json`。
+
 ---
 
 ## 二、出图成本

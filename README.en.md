@@ -1,22 +1,22 @@
 <p align="center">
 
-![taxue-imagegen: four types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, or storyboard](./assets/readme/hero.png)
+![taxue-imagegen: five types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, multi-grid sheet, or storyboard](./assets/readme/hero.png)
 
 </p>
 
 <p align="center">
   <a href="./README.md">中文</a> ·
   <a href="#specimens">Specimens</a> ·
-  <a href="#four-types">Types</a> ·
+  <a href="#five-types">Types</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#how-to-use">Get started</a>
 </p>
 
 # Taxue Imagegen
 
-Four types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, or storyboard.
+Five types, four workflows — turn a sentence into a stable cover, group illustration, packaging mockup, multi-grid sheet, or storyboard.
 
-[![Version](https://img.shields.io/badge/VERSION-1.20.1-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/VERSION-1.21.0-2ea44f?style=flat-square&labelColor=333)](./CHANGELOG.md)
 
 Runs only inside [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/Overview). Generation goes through its ImageGen; slot fill and verification are scripts. The other three skills in the family ship prompts you can copy anywhere; this one ships a pipeline that lives in WorkBuddy.
 
@@ -31,7 +31,7 @@ Same family — pick the right skill:
 | **taxue-creative-style** (image-style engine) | 14 families, 77 variants: by-style generation, prompt rewriting, from-scratch, remember preferences | [taxue-creative-style](https://github.com/taxueseek/taxue-creative-style) |
 | **taxue-halftone** (print-feel engine) | 12 styles + 2 variants: a phrase, a theme, or a photo into a print-feel cover | [taxue-halftone](https://github.com/taxueseek/taxue-halftone) |
 | **taxue-solar-polaroid** (solar-term engine) | Solar terms, festivals, phenology lines → posters, paper archives, polaroids | [taxue-solar-polaroid](https://github.com/taxueseek/taxue-solar-polaroid) |
-| **taxue-imagegen** (meta-prompt library) | Four types + four workflows + mechanical slot fill + one-shot verify | **You are here** · WorkBuddy-exclusive · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
+| **taxue-imagegen** (meta-prompt library) | Five types + four workflows + mechanical slot fill + one-shot verify | **You are here** · WorkBuddy-exclusive · [taxue-imagegen](https://github.com/taxueseek/taxue-imagegen) |
 
 ## Specimens
 
@@ -54,7 +54,7 @@ Three Type A posters, two Type B groups, four Type C mockups — all real output
 
 Platform watermarks stripped. See [ASSET-LICENSE.md](./ASSET-LICENSE.md).
 
-## Four types
+## Five types
 
 | Type | Use it for | Entry point |
 |---|---|---|
@@ -62,8 +62,9 @@ Platform watermarks stripped. See [ASSET-LICENSE.md](./ASSET-LICENSE.md).
 | **B · Hand-drawn group illustration** | Multi-character illustration, animal bestiary, travel group | `scripts/fill_meta.py B --theme <theme>` |
 | **C · Photoreal packaging mockup** | Studio-lit mockup (coffee bag / serum bottle / can / rigid box) | `scripts/fill_meta.py C` |
 | **D · Narrative storyboard** | Comic slices, picture-book sequences, same character across 6–9 frames | `scripts/build_storyboard.py --case cyber\|ink` |
+| **E · Multi-grid layout** | Sprite sheets, series posters, stamp sets, emoji packs, character bibles (each cell is an independent finished piece, bound by one shared spec) | `scripts/fill_meta.py E --list` |
 
-**Not sure?** Is the subject **one** thing or **many**? One → A, many → B. Product mockup → C. Continuous narrative → D.
+**Not sure?** Is the subject **one** thing or **many**? One → A, many → B. Product mockup → C. Continuous narrative → D. A **set of pieces that each stand alone** (sprite sheet / series posters / stamp set) → E.
 
 ## Four workflows
 
@@ -71,7 +72,7 @@ Platform watermarks stripped. See [ASSET-LICENSE.md](./ASSET-LICENSE.md).
 |---|---|---|
 | **Production** (default) | Type + template mature, target is a final | Fill → preflight → **generate 1 image only** → three-tier review → done or one targeted fix |
 | **Exploration** | New theme / new style / template iteration | `scripts/explore.py` batched prompts + `settle` rename + verify + write back conclusions; single-style 2–5, multi-style 5–9; see [`references/explore-mode.md`](./references/explore-mode.md) |
-| **Watermark removal** | Output has bottom-right "AI 生成 / WORKBUDDY" | Default [`scripts/dewm_v10.py`](./scripts/dewm_v10.py) (v9 + flat-area adaptive fusion, 31 ms); tricky images use [`scripts/pick_wm.py`](./scripts/pick_wm.py) four-way picker; all outputs go to `_clean/`, **never overwrite source** |
+| **Watermark removal** | Output has bottom-right "AI 生成 / WORKBUDDY" | Default [`scripts/dewm_v10.py`](./scripts/dewm_v10.py) (v9 + flat-area adaptive fusion, 31 ms); tricky images use [`scripts/pick_wm.py`](./scripts/pick_wm.py) four-way picker; all outputs go to `_clean/`, **never overwrite source**. The **platform imprint** (a fixed graphic stamped on *landscape* output only) is not a tiled watermark, so the whole `dewm` family necessarily reports `k̂≈0` on it — use [`scripts/dewm_imprint.py`](./scripts/dewm_imprint.py) instead, and feed it a whole series at once |
 | **Verification** | Close the loop after generation | [`scripts/postcheck.py`](./scripts/postcheck.py) metrics + 2× text-band crop + dewm + runs.csv logging, <0.5 s |
 
 **Production quota: 1 image by default.** No draft-then-final. No "compare" second image. Only blockers permit one targeted regeneration, changing exactly one thing. **Exploration quota**: single-style 2–5, multi-style 5–9; batches ≤ 3 per round, immediately `ls` and `explore.py settle` to rename-lock (prevents same-second timestamp collisions).
@@ -82,7 +83,7 @@ Platform watermarks stripped. See [ASSET-LICENSE.md](./ASSET-LICENSE.md).
   <img src="./assets/readme/workflow.svg" width="100%" alt="From slot fill to a passing image: pick a type, fill slots, generate and verify, ship only if it passes">
 </p>
 
-The hard problem is not writing one pretty sentence. It is making the model produce the expected image every time, and locating the break when it doesn't. Three pieces: four types, each owning one figure-text relationship; scripts fill slots and never rewrite the template; one verification call after generation.
+The hard problem is not writing one pretty sentence. It is making the model produce the expected image every time, and locating the break when it doesn't. Three pieces: five types, each owning one figure-text relationship; scripts fill slots and never rewrite the template; one verification call after generation.
 
 ## How to use
 
@@ -169,6 +170,16 @@ CI: [`.github/workflows/validate.yml`](./.github/workflows/validate.yml).
 
 ## Changelog
 
+- **v1.21.0** (2026-09-23): **The platform imprint is now removable in place** — new [`scripts/dewm_imprint.py`](./scripts/dewm_imprint.py) (cross-image consensus mask + αM reverse-alpha + hybrid routing). The imprint is a fixed graphic stamped after generation, not a tiled watermark, so the whole `dewm` family necessarily reports `k̂≈0` on it; the script needs a whole series at once. Also fixes preflight's third false positive: the paragraph-title exemption moved from a hard-coded whitelist to a **line-position** rule, so hand-written templates stop being flagged as "unfilled slots" (regression suite 192 checks). Writes back measured platform facts: the actual model is `hunyuan-image-alpha`, 5.71 credits per 1024x1536 image, and `quality` may not reach the request at all. See [CHANGELOG.md](./CHANGELOG.md).
+- **v1.20.1** (2026-09-18): Fix `runs.csv` header misalignment — every machine upgraded from an older version wrote rows under a stale 14-column header, silently defeating the very reason-codes the columns were added for; `align_log()` now verifies the header before writing and re-aligns rows by their own column order, preserving all 12 historical notes in the real log.
+- **v1.20.0** (2026-09-18): Audit round — fix drifted acceptance criteria (the verify sub-skill still carried a blocker that had been retracted, so an agent following it would keep mis-judging outputs as failures and burn credits on pointless regenerations); add a SKILL↔verify consistency gate; second round of resident-surface slimming (SKILL.md 34,228 → 29,652 B, −13%); split the regression suite by domain into five modules.
+- **v1.19.0** (2026-09-18): **Resident-surface slimming for WorkBuddy** — the change history stuffed into the skill description moved to CHANGELOG: description 9,717 → 1,797 B (**−82%**; across 82 local skills totalling 51 KB of descriptions this one alone was 18.7%, 28× the median). SKILL.md split two sections into standalone reference files, 52,317 → 34 KB (−35%); size-budget gate added. **Acceptance thresholds re-calibrated against 202 archived deliverables**: the old blockers fired on 46.5% / 64.9% / 82.2% of real, kept outputs; after re-calibration 4.3% / 3.0% — every false positive removed is a 5–10 credit regeneration that no longer happens. Also adds `scripts/_env.py` (plain-language missing-dependency errors) and `scripts/sync_release.sh` (one-way source → release sync).
+- **v1.18.0** (2026-09-18): Add `scripts/paper_white.py` — warm paper whites on white-background posters are now fixed by deterministic post-processing (measured R−B = +5.5 on both versions of the same prompt, unchanged even after writing a numeric hard line: the paper white is rendered as a **material colour** and ignores semantic prohibitions); same image R−B 5.45 → 0.00, luminance 236 → 250, ink/text/colour regions bit-identical.
+- **v1.17.0** (2026-09-13): Reverses the previous verdict on watermark removal v13 — that evidence came from an **evaluation blind spot** (the synthetic benchmark injects watermarks from the calibration template, so it can never produce a low-confidence sample, while 30% of the real corpus is low-confidence); re-tested by confidence group, v13 wins all three.
+- **v1.16.0** (2026-09-13): Found a defect in the **metric itself** — the residual measure varied with background (a white paper base was suppressed ~26× versus pure black, i.e. the check was blind on the main image type); switched to a background-independent quantity and added a reference-free "whitening-is-one-way" damage audit.
+- **v1.15.0** (2026-09-12): Fix the family definition for watermark version selection (structural references only among same-estimator versions); fix `run_tests.sh` false failures from a bare `python3` without cv2.
+- **v1.14.0** (2026-09-12): Output verification becomes a sub-skill, `sub-skills/verify/` (three-tier review, defect repair routing, per-type acceptance focus); watermark handling becomes **auto-detect, act only on a hit** (clean images are no longer unconditionally processed); Type E gains acceptance checks.
+- **v1.13.0** (2026-09-12): Watermark version selection moves to a dual criterion (residual **and** structural damage) — the old criterion rated a whole-region inpaint as best, because a flattened image scores perfectly on residual alone.
 - **v1.12.0** (2026-09-12): New type E "multi-grid layout" (sprite sheets / series posters / stamp sets / character-bible sheets), where every cell is an independent finished piece bound by one shared spec; `fill_meta.py E` (11 slots + cell-count vs cell-list check); preflight no longer mistakes a cell size for the output canvas size. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.11.1** (2026-09-09): Fix `measure.py` crash on `%`, fake-green verification tests, missing hue words in preflight. See [CHANGELOG.md](./CHANGELOG.md).
 - **v1.11.0** (2026-09-09): Optional cloud post-processing (propose first); dual-route watermark removal.

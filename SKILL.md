@@ -1,7 +1,7 @@
 ---
 name: taxue-imagegen
-version: 1.20.1
-updated: 2026-09-18
+version: 1.21.0
+updated: 2026-09-23
 agent_created: true
 description: >-
   WorkBuddy 专属生图 Skill（仅在 WorkBuddy 内运行：出图走 WorkBuddy ImageGen，填槽与验收由 Agent 调用 scripts/*.py 完成；同系列另三个技能为通用技能，不绑平台/模型/Agent）。 基准模型 hunyuan-image——全部硬底线与验收阈值在它上面实测；其它模型原则上可用，换模型须重校阈值。 积分：单张约 5-10，每轮改进=一次全新出图=再扣一次，多轮打磨消耗大须先告知。
@@ -193,6 +193,9 @@ $PY "$SKILL/scripts/measure.py" --grid /tmp/grid.png *.png                     #
 **水印**：`postcheck.py` 默认 `--wm auto`——先识别，命中才动手，去后复检；
 干净图不被无条件动刀。三分支与双条件闸门见子技能 §3。
 `--dewm` 等价 `--wm force`（保留旧参数），`--wm off` 关闭。
+**但平台署名水印（右下角「AI生成 / WORKBUDDY」）不在这三条分支内**：它会被判成
+`[wm_texture] 纹理误报，不拦交付`，因而既不拦、也不去。它的处置是
+`scripts/dewm_imprint.py`（须同系列多张一起跑）——判据与两条实测教训见坑 36。
 **`dewm` 报 `conf<0.1` / `k̂≈0` 是它在说「这张图我解不了」——不要 `--no-guard` 硬解，
 也不要改用手工 inpaint 硬框**：背景是深色实色块 + 高频纹理（或水印跨材质）时，
 这两条路都会把整块抹平并啃掉邻接文字；应改用**分材质填充**（坑 35）。
@@ -254,7 +257,7 @@ postcheck 命中时输出 `[paper_warm]` 并给 **pending**（不是 blocker）�
 | `references/storyboard.md` | 类型 D 方法层：双 LOCK 一致性锚 + 9 帧镜头设计法（1024x1792，必须串行出图） |
 | `references/multigrid-layout.md` | 类型 E 方法层：多格排版元模板 + 硬规则（一致性锚必填、清单全给或全不给、防样机收口） |
 | `references/size-and-params.md` | 全部参数、尺寸实测原始数据、画幅选择指南、积分与 quality |
-| `references/pitfalls.md` | 翻车了按症状查表（35 个坑，只读命中节）+ 待解决项 |
+| `references/pitfalls.md` | 翻车了按症状查表（36 个坑，只读命中节）+ 待解决项 |
 | `references/explore-mode.md` | 探索模式规则：单风格 2–5 / 多风格 5–9、分批 ≤3、settle 改名防撞名（坑 17） |
 | `references/cloud-postprocess.md` | 云端后处理完整版（§6 的展开）：操作映射、去水印双路由、官方六条纪律 |
 | `references/jimeng-env.md` | 豆包/即梦适配完整版（§9 的展开）：适配边界表、S0–S6 平台检测信号链 |
@@ -263,11 +266,12 @@ postcheck 命中时输出 `[paper_warm]` 并给 **pending**（不是 blocker）�
 | `scripts/fill_meta.py` | **机械填槽出稿（默认入口）**：A/B/C/E 全走它，组装完自动过 preflight；`--list` 查槽位/主题，`--manpu` 切满铺型 |
 | `scripts/jimeng.py` | 豆包/即梦环境出稿：只换算尺寸，prompt 与 fill_meta 逐字节一致；`--sizes` 查尺寸 |
 | `scripts/test_jimeng.py` | jimeng.py 回归测试（43 项，不依赖 numpy/PIL），已并入 run_tests.sh |
-| `scripts/preflight.py` | 手写提示词时单独跑的出图前静态检查（35 个坑中 11 个可文本拦截 + 残留槽位，认 {} 与【】）；fill_meta 已内嵌 |
+| `scripts/preflight.py` | 手写提示词时单独跑的出图前静态检查（36 个坑中 11 个可文本拦截 + 残留槽位，认 {} 与【】）；fill_meta 已内嵌 |
 | `scripts/postcheck.py` | **出图后一次调用（默认入口）**：量测+文字带 2x 裁片+水印自动识别+runs.csv 记账；`--track A–E`，类型 E 加 `--expect-cells N`；verdict 三值 blocker/pending/pass = 退出码 1/3/0 |
 | `scripts/measure.py` | 单独量测 / `--grid` 出对比拼图；`grid_metrics()` 是类型 E 网格结构判定 |
 | `scripts/wm_auto.py` | 水印自动识别与条件去除：amp 与 R² 双条件闸门 → skip/remove/manual；默认只探测，`--remove` 才执行；实测依据见 evidence.md §1 |
 | `scripts/dewm_v10.py` | **默认单版去水印**：v9 管线 + 平底自适应融合（`--no-fuse` 关）+ 可解性门控（`--no-guard` 关，坑 26） |
+| `scripts/dewm_imprint.py` | **平台署名水印**（右下角「AI生成 / WORKBUDDY」）：dewm 全族对它必报「解不了」（k̂≈0 是必然，它本就不是平铺水印），rmwm_light 掩膜退化为 100%；本脚本走「跨图共识掩膜 + αM 反解 + 混合路由」，**须 N 张同系列一起跑**（坑 36） |
 | `scripts/dewm.py` / `dewm_v7.py` / `dewm_v8.py` / `dewm_v9.py` | 手动单选旧版（v6 反解 / v7 inpaint / v8 自适应 / v9 锚点对齐）；同时是 pick_wm 的候选池 |
 | `scripts/dewm_v11.py` / `dewm_v12.py` | 疑难可选（暗区白残留 / 水印挪位），实测整体劣于 v10，非默认 |
 | `scripts/dewm_v13.py` | **实验候选，未并入选版池**：Wiener 融合；若启用走 conf 门控路由，不要改 σ（坑 32） |

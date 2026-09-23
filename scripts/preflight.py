@@ -110,14 +110,14 @@ SLOT_CN = re.compile(r"【[^】\n]{1,40}】")
 
 # 类型 A/B/D 模板用【】作**段落标题**而非槽位（见 references/poster-v5.md §一）。
 # 2026-09-18 实测：A 类 prompt 100% 被误报「残留未填槽位 7 个」，把真 BLOCK 淹没。
-SECTION_TITLES = {"【三项输入】", "【画面】", "【三组文案】", "【负向】", "【观看路径】"}
-
-
-def is_section_title(tok):
-    """类型 A 模板的段落标题（非槽位），不该被判为残留槽位。"""
-    return (tok in SECTION_TITLES
-            or tok.startswith("【硬底线")
-            or tok.startswith("【软引导"))
+# 2026-09-23 修：原判据是**硬编码白名单**（只认模板自带的那几个标题），而技能同时
+#   规定「模板没覆盖的新需求才手写」（SKILL.md §3 步 2）——手写模板必然出现自定义段落
+#   标题（如【版式骨架 · 四层】【工艺】），于是**手写必踩**，仍被报成「残留槽位」BLOCK。
+#   中途试过「关键词表」，但【三比四】这类比例槽位与标题在关键词上无法区分
+#   （回归测试 test_preflight.py 的坑 24 用例正是它）。
+#   最终按**行位置**判：独占整行的【】= 段落标题；行内嵌的【】= 待填空槽。
+#   C/E 走另一分支（其【】本就是槽位），不受影响。
+LINE_ONLY_CN = re.compile(r"^[ \t]*(【[^】\n]{1,40}】)[ \t]*$", re.M)
 
 # 各类型适用的规则（避免用 A 的规则误判 D 的结构标签，反之亦然）
 TRACKS = ("A", "B", "C", "D", "E")
@@ -251,11 +251,12 @@ def check(text, track):
 
     # 坑 24 · 残留槽位：类型 A/B/D 用 {}，类型 C/E 用【】——两种都拦
     # （2026-09-08 实测：C 模板 17 个【】槽位此前被静默放行）
-    # 2026-09-18：A/B/D 的【】是模板段落标题（见 is_section_title），须豁免，否则 100% 误报
+    # 2026-09-23：A/B/D 的【】按**行位置**豁免（见 LINE_ONLY_CN 注释）
     if track in ("C", "E"):
         cn_leftover = SLOT_CN.findall(text)
     else:
-        cn_leftover = [t for t in SLOT_CN.findall(text) if not is_section_title(t)]
+        section_titles = set(LINE_ONLY_CN.findall(text))
+        cn_leftover = [t for t in SLOT_CN.findall(text) if t not in section_titles]
     leftover = SLOT_BRACE.findall(text) + cn_leftover
     if leftover:
         out.append(("BLOCK", "槽位",
