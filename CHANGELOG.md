@@ -65,6 +65,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### 修复（单点，均实测复现）
 
+- **`fill_meta.py` 的类型 B 从未跑过内嵌 preflight**。A/C/E 三个 `do_track_*` 都有
+  `run_preflight(...)`，只有 B 漏了接线，而 SKILL.md §3 步 2 与 §8 都写着「A/B/C/E 全走它，
+  组装完自动过 preflight」——**文档说检查过了、代码没检查**，用户会以为已经拦过就直接提交。
+  （与 v1.20.1 那个「定义了但 main() 漏接线、从未跑过的回归测试」同类。）现已接上并如实报出；
+  新门禁按「四个 track 都要有 `run_preflight(..., "X")` 调用点」+「跑一次 B 必须在 stderr
+  看到 preflight 结果」两层判定。
+- **`preflight.py` 坑1 假阳性：连字符复合词被误判为色相词**。`\b` 挡不住 `middle-aged`
+  里的 `aged`——实测类型 B 主题「休息」整条被判坑1，命中的原文是
+  "the middle-aged human man"（中年男人）。给**单词项**加 `(?<!-)` 前缀（复合词项
+  `off-white` / `bone-white` / `sun-bleached` 不加，连字符本就是它们的一部分）。
 - **`preflight.py`：末行无换行会吃掉最后一个字符**。同一句「画布 2000x3000 每帧」，不带尾
   换行时报「尺寸不在已实测表」、带上就通过——而文件有没有尾换行纯看编辑器。根因是
   `text.find("\n", end)` 返回 -1 时切片退化成 `[start:-1]`。
@@ -130,6 +140,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Image.open + resize`，4K 图约 132 ms/张）；`grid_metrics(path, im=None)` 可复用已开的图。
 - `explore.py settle` 在文件数与 manifest 条数不符时只警告、仍按索引改名，同秒 mtime 会
   让排序退化（正是文档警示的撞名场景），未实测。
+- **类型 B 主题库与硬规则 1 的冲突（已量化，本轮不动）**：7 个主题里 5 个携带色相词——
+  鸟/猫/狗/合影 共用的一句调色板描述 `a unified low-to-mid saturation natural palette of
+  cream white, warm grey, grey-brown`（`crowd-themes.md` 4 处），百相命中在自己的
+  **文档段**（实测记录表里的「cream 白在调色板里…泛黄前兆」）。两者都不该用色相词：
+  前者按 §一·丙 已定的写法应换 hex，后者说明**主题段把文档与提示词混在一起**。
+  故本轮只把「B 也过 preflight」的接线补齐并**如实报出、不阻断**——改成阻断会让文档里的
+  默认入口 `fill_meta B --theme 猫` 当场退出 1；改主题库要用 hex 写法重跑出图验证，
+  属内容改动，需另开一轮（门禁已把「命中数 5」设为债务上限，涨了就红）。
+- **`fill_meta B --theme 百相` 会把文档段当提示词整段打印**：该主题段 4,485 字符里含
+  23 行实测记录表格与一行 `工作区出图：generated-images/…png` 路径。整段提交等于把
+  元信息混进提示词，与硬规则 5（元信息与内容物理分离）及坑 8 冲突。修法是拆分主题段的
+  「提示词」与「实测记录」两部分，属内容结构调整，本轮未动。
 - 两条**实测过、且已验证改法 bit-exact、但按性价比本轮不动**的资源项（走查时逐条量过）：
   `pick_wm` 的 `inpaint` 用了全图而只改右下 ROI（裁到框内约 2.8x 加速，占该脚本单次
   调用的 26%）；`metric_flat` 的全图三通道 `medianBlur(31)` 占其总耗时 22%。

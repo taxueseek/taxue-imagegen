@@ -46,10 +46,17 @@ import sys
 # ② 场景描述词（dusty road / murky river）不收——它们说的是**画面内容**不是底色，
 #    且真实语料零出现，收了只会制造假阳性（实测："a dusty road at dawn" 会被判违规）。
 #    词表只对「底色被推离中性白」负责。
+# 2026-09-23 补：`\b` 挡不住「连字符复合词」——`middle-aged` 里 `aged` 前面是连字符，
+# `\baged\b` 照样命中。实测类型 B 主题「休息」整条被判坑1，命中的却是
+# "the middle-aged human man"（中年男人），与色相毫无关系。故给**单词项**加
+# `(?<!-)` 前缀：连字符说明它是复合词的一部分，不是独立的色相词。
+# 复合词项（off-white / bone-white / sun-bleached）不加，它们的连字符本就是设计的一部分。
 HUE_WORDS = [
-    r"\bwarm\b", r"\baged\b", r"\bvintage\b", r"\bfaded\b", r"\bunbleached\b",
-    r"\bsepia\b", r"\bsun-bleached\b", r"\bcream\b", r"\bivory\b", r"\bbeige\b",
-    r"\bkraft\b",
+    r"(?<!-)\bwarm\b", r"(?<!-)\baged\b", r"(?<!-)\bvintage\b",
+    r"(?<!-)\bfaded\b", r"(?<!-)\bunbleached\b",
+    r"(?<!-)\bsepia\b", r"\bsun-bleached\b", r"(?<!-)\bcream\b",
+    r"(?<!-)\bivory\b", r"(?<!-)\bbeige\b",
+    r"(?<!-)\bkraft\b",
     r"\bbone[- ]?white\b", r"\boff[- ]?white\b", r"\beggshell\b", r"\bparchment\b",
     r"\boatmeal\b",
     r"做旧", r"复古纸", r"牛皮纸", r"米白", r"奶油色", r"象牙白",

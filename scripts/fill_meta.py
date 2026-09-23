@@ -91,8 +91,12 @@ def parse_slot(label):
     return label.strip(), None
 
 
-def run_preflight(prompt, track):
-    """组装结果直接过 preflight；返回 (是否有阻断, 输出行)。"""
+def run_preflight(prompt, track, blocking=True):
+    """组装结果直接过 preflight；返回 (是否有阻断, 输出行)。
+
+    `blocking=False` 时**只报不拦**：调用方负责决定退出码。当前只有类型 B 用它，
+    原因见 `do_track_b` 的注释。
+    """
     try:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
@@ -111,7 +115,7 @@ def run_preflight(prompt, track):
         lines.append(f"{mark} [{pit}] {msg}")
     if not findings:
         lines.append("✅ preflight 通过：无已知坑触发")
-    return blocks > 0, lines
+    return (blocks > 0 if blocking else False), lines
 
 
 def do_track_a(args):
@@ -276,6 +280,24 @@ def do_track_b(args):
     print(note, file=sys.stderr)
     if args.out:
         write_out(args.out, section)
+    # 2026-09-23 修：**类型 B 此前从未跑过内嵌 preflight**——A/C/E 三个 do_track_* 都有
+    # `run_preflight(...)`，只有 B 漏了接线，而 SKILL.md §3 步 2 与 §8 都写着
+    # 「A/B/C/E 全走它，组装完自动过 preflight」。文档说检查过、代码没检查，是最坏的一种
+    # 不一致：用户会以为已经拦过了。（同 v1.20.1 那个「定义了但 main() 漏接线、从未跑过
+    # 的回归测试」属同一类。）
+    #
+    # 为什么这一处**只报不拦**：B 的 prompt 正文就是主题库整段内容（全英文、历史实测 pass），
+    # 而实测 7 个主题里 5 个携带色相词——4 个是共用的调色板句
+    # `cream white, warm grey, grey-brown`，1 个（百相）命中在**文档段**里。
+    # 直接改成拦会让文档里的默认入口 `fill_meta B --theme 猫` 当场退出 1。
+    # 改主题库要用 §一·丙 已定的写法（色相词换成 hex）并重跑出图验证，属内容改动，
+    # 已登记在 CHANGELOG 待实施；本轮先把「检查」这件事实补齐并如实报出来。
+    blocked_b, lines_b = run_preflight(section, "B", blocking=False)
+    for line in lines_b:
+        print(line, file=sys.stderr)
+    if any(l.startswith("❌") for l in lines_b):
+        print("note  类型 B 的命中项**不阻断**（主题库为整段实测内容，改动需重跑验证）；"
+              "逐条看过再提交，见 CHANGELOG「待实施」", file=sys.stderr)
 
 
 def load_track_c_template():
