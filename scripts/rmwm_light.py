@@ -26,6 +26,7 @@ rmwm.py 的 top-hat 掩膜只检暗于背景的字形；白平衡提亮后或白
 --out 传目录时写 `目录/原名.ext`，此时与原图同名但不同目录，仍不覆盖；
 --out 传文件名时只允许单张输入（多张会互相覆盖，直接报错）。
 """
+import _log
 import argparse, glob, os, sys
 try:
     import cv2
@@ -35,6 +36,9 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
     _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     import _env
     _env.die(_e, ['cv2', 'numpy'])
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dewm_io import guard_target  # noqa: E402
 
 DEFAULT_BOX = (820, 1430, 1024, 1536)  # 1024x1536 参考坐标
 COVERAGE_LIMIT = 0.40                  # 掩膜覆盖率硬上限：超过即判判据失效（坑 35）
@@ -99,18 +103,17 @@ def process(path, out_dir, box, thresh, kernel, dilate_iter, check_only, force=F
     mask = np.zeros(img.shape[:2], np.uint8)
     mask[y0:y1, x0:x1] = m
     out = cv2.inpaint(img, mask, 5, cv2.INPAINT_TELEA)
-    src_abs = os.path.abspath(path)
     if out_dir and os.path.splitext(out_dir)[1].lower() in (".png", ".jpg", ".jpeg", ".webp"):
         dst = out_dir
     else:
         out_dir = out_dir or "."
-        os.makedirs(out_dir, exist_ok=True)
         dst = os.path.join(out_dir, os.path.basename(path))
-        # 坑 13 教训④：默认输出若与原图同路径，静默覆盖会毁掉原图——改写带后缀的新文件
-        if os.path.abspath(dst) == src_abs:
-            stem, ext = os.path.splitext(path)
-            dst = stem + "_light" + (ext if ext.lower() in (".png", ".jpg", ".jpeg", ".webp") else ".png")
-            print(f"warn  目标与原图同路径，改写为不覆盖原图: {dst}")
+    # 坑 13 教训④：目标若与原图同路径，静默覆盖会毁掉原图。
+    # 2026-09-23 修：原守卫只在「--out 传目录」分支做，且只比 `abspath`——
+    # APFS 大小写变体、硬链接、符号链接三条路都绕得过去（dewm_io 头部正是这么踩出来的），
+    # 而 `--out` 传文件路径那条分支**根本没有守卫**。统一交给 dewm_io.guard_target：
+    # 判据（realpath + samefile + normcase）与同族完全一致，不在本文件重写一遍。
+    dst = guard_target(path, dst, "_light")
     imwrite_any(dst, out)
     print(f"ok    {os.path.basename(path)}  mask_px={px} 覆盖率={cov*100:.1f}% -> {dst}")
     if cov > 0.25:
@@ -141,4 +144,4 @@ def main():
         process(p, a.out, box, a.thresh, a.kernel, a.dilate, a.check, a.force)
 
 if __name__ == "__main__":
-    main()
+    _log.run("rmwm_light", main)

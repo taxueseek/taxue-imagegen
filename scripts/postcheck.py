@@ -22,7 +22,7 @@ verdict 三档自动判定（与 SKILL.md §3 评审卡一致）：
   blocker  真错，或 --text bad / 留白挤成一团 / 尺寸与格数不符 → 允许一次定向重生
   pending  能免费修的（纸白偏暖 → paper_white.py）、文字未核对、水印存疑 → 不得计 pass
   pass     指标在阈值内 且 文字逐字无误
-退出码：0=pass，1=blocker，3=pending。
+退出码：0=pass，1=blocker，3=pending，**4=工具/环境错误（未判定，不是 blocker）**。
 
 **为什么纸白偏暖走 pending 而不是 blocker**（2026-09-18）：
 重生改不了这个偏色——坑 33 实测同一提示词两版，纸白均值都是 R237.6/G235.5/B232.0
@@ -33,6 +33,7 @@ verdict 三档自动判定（与 SKILL.md §3 评审卡一致）：
 这样「这张图为什么没通过 / 为什么被重出」可以直接统计，不必翻日志猜。
 """
 
+import _log
 import argparse
 import csv
 import os
@@ -78,21 +79,35 @@ CROWD_BASE_MIN = 200.0   # 只对浅底图提示（暗底/满铺设计不适用�
 SAT_MAX = 70.0           # 类型 B 平均饱和度上限 → 触发率 3.0%
 
 
+_SIBLINGS = {}
+
+
+def _sibling(name):
+    """按名字加载 scripts/ 下的兄弟模块，**进程内只加载一次**。
+
+    2026-09-23（对抗性审查实测）：原先每张图都重新 `exec_module` 一遍，`measure.py`
+    16.3 ms/次、`wm_auto.py` 35.3 ms/次（含 cv2 / audit_wm / dewm_io 的导入链）——
+    9 张一批就是 ~0.5 s，纯重复开销。这些模块是无状态的（常量 + 纯函数），
+    跨图复用没有副作用；`--log-path` 这类状态本来是参数传入的，不靠模块全局。
+    """
+    mod = _SIBLINGS.get(name)
+    if mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name.replace(".py", ""),
+                                                     os.path.join(HERE, name))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _SIBLINGS[name] = mod
+    return mod
+
+
 def load_sibling(name, attr):
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name.replace(".py", ""), os.path.join(HERE, name))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, attr)
+    return getattr(_sibling(name), attr)
 
 
 def load_sibling_dict(name):
     """加载兄弟模块并返回其命名空间，供需要多个入口的模块使用（wm_auto）。"""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name.replace(".py", ""), os.path.join(HERE, name))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return vars(mod)
+    return vars(_sibling(name))
 
 
 def measure_findings(row, track, with_top, expect_cells=None, grid=None):
@@ -277,7 +292,9 @@ def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False
     if no_log:
         return
     log_path = log_path or LOG_PATH
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    d = os.path.dirname(log_path)
+    if d:                                # 裸文件名（cwd 下）时 dirname 为空，makedirs("") 会抛
+        os.makedirs(d, exist_ok=True)
     need_header = align_log(log_path)
     with open(log_path, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -295,19 +312,20 @@ def append_log(row, track, text, verdict, note, reason="", hint="", no_log=False
 
 def process(path, args):
     metrics = load_sibling("measure.py", "metrics")
-    im, row = metrics(path, args.top and args.track == "A")
+    with_top = bool(args.top and args.track == "A")
+    im, row = metrics(path, with_top)
     row["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    blockers, pendings, hints = measure_findings(
-        row, args.track, args.top and args.track == "A")
 
-    # 类型 E：网格结构量测（格数 / 每格等比例 / 格间净空）
-    grid = None
-    if args.track == "E":
-        grid_metrics = load_sibling("measure.py", "grid_metrics")
-        grid = grid_metrics(path)
-        # 判定在 measure_findings 里做（要拿到 expect_cells），这里只量测
-        b2, p2, h2 = measure_findings(row, "E", False, args.expect_cells, grid)
-        blockers += b2; pendings += p2; hints += h2
+    # 类型 E：网格结构量测（格数 / 每格等比例 / 格间净空）。
+    # **必须在唯一一次 measure_findings 之前量完**（2026-09-23 修）。
+    # 原先是「先无 grid 调一次、再带 grid 调一次、结果相加」：第一次调用的
+    # `grid_warnings(None)` 会留下一条假的「网格未解析（未量测）」，即使网格
+    # 明明解析成功也照报——实测 3 行×1 列已正确识别，控制台仍并列打出
+    # 「网格未解析（未量测）」，runs.csv 里也稳定出现两个 `grid_diag`。
+    # 诊断里混进一条必然为假的行，代价是读者开始不信诊断。
+    grid = load_sibling("measure.py", "grid_metrics")(path) if args.track == "E" else None
+    blockers, pendings, hints = measure_findings(
+        row, args.track, with_top, args.expect_cells, grid)
 
     # 文字带裁片：A 有文字带必导；C 有品牌堆叠字，同样需要目检
     band = None
@@ -416,7 +434,10 @@ def process(path, args):
         print(f"  ❌ [{code}] {msg}")
     for code, msg in pendings:
         print(f"  ⏳ [{code}] {msg}")
-    print(f"  verdict={verdict} text={text} → runs.csv")
+    # --no-log 时不能说「→ runs.csv」（2026-09-23 修）：文案声称落盘、实际没落，
+    # 是那种「看起来有、其实没有」的记账，比不写更坏。
+    print(f"  verdict={verdict} text={text} → "
+          f"{'runs.csv' if not args.no_log else '（--no-log，未落盘）'}")
     return verdict
 
 
@@ -441,19 +462,45 @@ def main():
     args = ap.parse_args()
     if args.dewm:
         args.wm = "force"   # 旧参数语义保留，避免既有文档/脚本失效
+    if args.expect_cells is not None and args.track != "E":
+        # 格数只对类型 E 有意义。此前静默丢弃，用户以为校过了（2026-09-23 修）。
+        ap.error(f"--expect-cells 只对类型 E 有效（当前 --track {args.track}）；"
+                 f"要去掉该参数，或把 --track 改成 E")
 
     verdicts = []
+    tool_errors = []
+    skipped = []
     for p in args.images:
         if not os.path.exists(p):
             print(f"[skip] 不存在: {p}")
+            skipped.append(os.path.basename(p))
             continue
-        verdicts.append(process(p, args))
+        try:
+            verdicts.append(process(p, args))
+        except Exception as e:      # noqa: BLE001
+            # **工具自身失败不是 blocker**（2026-09-23 修）。
+            # 原先异常直接冒泡：Python 未捕获异常退出码就是 1，而 1 在本脚本的约定里
+            # 表示 blocker。于是「读不了图 / runs.csv 写不进去 / 传了目录当图片」这类
+            # 环境问题会被读成「这张图有毛病」，Agent 据此做一次定向重生，白扣 5–10 积分。
+            # 现在收敛成显式退出码 4，并在文案里说清「不要据此重生」。
+            msg = f"{type(e).__name__}: {e}"
+            tool_errors.append((os.path.basename(p), msg))
+            print(f"  ⚠️ [tool_error] {os.path.basename(p)}：{msg}", file=sys.stderr)
 
+    if not verdicts and (tool_errors or skipped):
+        print("\n❌ 全部图片都因工具/环境错误未能判定 —— **不是 blocker，不要据此定向重生**；"
+              "先修环境（依赖/路径/权限）再重跑")
+        sys.exit(4)
     if not verdicts:
         sys.exit(2)
     if any(v == "blocker" for v in verdicts):
         print("\n❌ blocker —— 按三档评审卡：才允许一次定向重生，只改一项")
         sys.exit(1)
+    if tool_errors or skipped:
+        detail = "、".join([n for n, _ in tool_errors[:3]] + skipped[:3])
+        print(f"\n⚠️ 另有 {len(tool_errors) + len(skipped)} 张未判定"
+              f"（工具/环境错误或路径不存在，**不是 blocker，不要重生**）：{detail}")
+        sys.exit(4)
     if any(v == "pending" for v in verdicts):
         print("\n⏳ pending —— 指标在阈值内，但仍有未结项（文字未逐字核对，"
               "或水印存疑待 pick_wm / 云端处理）；处理完再回填，pending 不得当作通过")
@@ -462,4 +509,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("postcheck", main)

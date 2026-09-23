@@ -38,6 +38,7 @@
 依赖：opencv-python-headless、numpy（零模型，~0.4s/张）
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -190,4 +191,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v8", main)

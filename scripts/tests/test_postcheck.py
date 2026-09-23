@@ -202,6 +202,66 @@ def test_postcheck_track_e():
               f"rc={r.returncode} 无声明值却拦了")
 
 
+def test_no_duplicate_finding_codes():
+    """一类 bug：同一行的 reason / hint 里，同一个码出现两次。
+
+    2026-09-23 实测：类型 E 的 `measure_findings` 被调了**两次**——先不带 grid 调一次、
+    再带 grid 调一次、结果相加。第一次那次拿不到 grid，`grid_warnings(None)` 于是留下
+    一条「网格未解析（未量测）」；即使网格明明解析成功（实测 3 行×1 列已识别），控制台
+    仍并列打出「未量测」与真实诊断，runs.csv 里也稳定出现两个 `grid_diag`。
+
+    原有用例只断言退出码与「格数不符」字样，于是这条假诊断一路静默通过。教训不是
+    「再补一条针对 grid 的断言」，而是：**凡把多个来源的 findings 相加，就可能加出重复**。
+    故这里对 reason / hint 两列做通用判据——同一个码在同一行出现两次即失败，
+    不针对任何一个具体码（将来任何一条重复叠加的路径都会被它抓住）。
+
+    判据要有牙，夹具就不能是「完美网格」：完美网格下第二次调用不产出任何诊断，
+    重复也就无从发生（实测确认过）。这里刻意让**一格缩水**——网格仍能解析、
+    但会产出一条真实诊断，重复才暴露得出来。夹具选错，门禁就是摆设。
+
+    另附一条直接回归：网格解析成功时，不得报「网格未解析（未量测）」。
+    """
+    import csv
+    pc = os.path.join(HERE, "postcheck.py")
+    with tempfile.TemporaryDirectory() as d:
+        img = os.path.join(d, "grid9_ragged.png")
+        # 一格缩水：网格可解析，但 cell_uniform < 0.90 → 必产出一条真实诊断
+        from PIL import Image, ImageDraw
+        im = Image.new("RGB", (1024, 1024), (255, 255, 255))
+        dr = ImageDraw.Draw(im)
+        gap, cw = 14, (1024 - 14 * 4) // 3
+        for r in range(3):
+            for c in range(3):
+                w = cw - 60 if (r, c) == (1, 1) else cw
+                x, y = gap + c * (cw + gap), gap + r * (cw + gap)
+                dr.rectangle([x, y, x + w, y + cw], fill=(30, 60, 90),
+                             outline=(200, 40, 40), width=2)
+        im.save(img)
+        log = os.path.join(d, "runs.csv")
+        r = subprocess.run([sys.executable, pc, img, "--track", "E",
+                            "--expect-cells", "9", "--text", "ok",
+                            "--log-path", log],
+                           capture_output=True, text=True)
+        rows = list(csv.DictReader(open(log, encoding="utf-8")))
+        dup = []
+        for col in ("reason", "hint"):
+            codes = [c.strip() for c in (rows[0].get(col) or "").split(",") if c.strip()]
+            repeated = sorted({c for c in codes if codes.count(c) > 1})
+            if repeated:
+                dup.append(f"{col}: {repeated}")
+        check("夹具确实产出了诊断（否则本门禁无牙）",
+              "grid_diag" in [c.strip() for c in (rows[0].get("hint") or "").split(",")],
+              f"hint={rows[0].get('hint')!r}——夹具没造出可重复的诊断")
+        check("同一行的 reason/hint 不出现重复码", not dup, "；".join(dup))
+
+        grid_ok = "网格: 3行×3列" in r.stdout
+        check("E 轨一致网格能被量测到（判据前提成立）", grid_ok,
+              f"没打出网格行：{r.stdout[-200:]}")
+        if grid_ok:
+            check("网格已解析时不报「未量测」假诊断", "未量测" not in r.stdout,
+                  "网格明明解析成功，却仍报「网格未解析（未量测）」")
+
+
 def test_postcheck_wm_not_false_blocker():
     """v1.13：自动水印不得把干净图降级成 pending。
 
@@ -444,6 +504,7 @@ def test_log_header_migrated():
 
 
 TESTS = [test_postcheck_verdict, test_cli_help, test_top_noise_not_blocker,
-         test_postcheck_track_e, test_postcheck_wm_not_false_blocker,
+         test_postcheck_track_e, test_no_duplicate_finding_codes,
+         test_postcheck_wm_not_false_blocker,
          test_postcheck_dewm_backcompat, test_reason_codes_recorded,
          test_log_header_migrated]

@@ -32,10 +32,21 @@
   [--roi x0,y0,x1,y1] [--thresh 0.05] [--dark 110] [--dry-run]
 输出一律落 --out，绝不在原图上改写。
 """
+import _log
 import os, sys, glob, argparse
-import numpy as np
-from PIL import Image
-import cv2
+
+try:
+    import numpy as np
+    from PIL import Image
+    import cv2
+except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（见 scripts/_env.py）
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import _env
+    _env.die(_e, ['cv2', 'numpy', 'PIL'])
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dewm_io import safe_target  # noqa: E402
 
 
 def _median_bg(sub, k=31):
@@ -55,7 +66,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("images", nargs="+")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--roi", default=None, help="默认右下角 15% x 12%")
+    ap.add_argument("--roi", default=None, help="默认右下角 15%% x 12%%（百分号须转义，否则 --help 崩溃）")
     ap.add_argument("--thresh", type=float, default=0.05, help="αM 判定阈值")
     ap.add_argument("--cap", type=float, default=0.92, help="αM 上封顶")
     ap.add_argument("--dark", type=float, default=110.0,
@@ -70,7 +81,18 @@ def main():
     if not files:
         sys.exit("no input")
 
-    ims = [Image.open(f).convert("RGB") for f in files]
+    ims = []
+    for f in files:
+        im = Image.open(f)
+        # >8 位输入必须拒绝，不能「转一下继续」（2026-09-23 实测）：
+        # PIL 把 I / I;16 / F 转 RGB 时是按 255 截断的，实测一张 16 位灰图
+        # （值域 40000–60000）产出 **100% 纯白的图**，而脚本照旧打印 `[ok]`——
+        # 静默产出坏图并报成功，比直接报错坏得多。要 8 位输入就明说。
+        if im.mode in ("I", "I;16", "I;16B", "I;16L", "I;16N", "F"):
+            sys.exit(f"[abort] {os.path.basename(f)} 是 {im.mode}（超过 8 位）。"
+                     f"本脚本只处理 8 位图：直接 convert('RGB') 会把它按 255 截断、整张变纯白，"
+                     f"而输出仍会被当成成功。请先降到 8 位（或换 8 位原图）再跑。")
+        ims.append(im.convert("RGB"))
     sizes = {im.size for im in ims}
     if len(sizes) != 1:
         sys.exit(f"尺寸不一致，无法跨图统计：{sizes}（请按系列分批）")
@@ -105,12 +127,13 @@ def main():
           f"掩膜覆盖={(m>0).mean()*100:.2f}%")
     if cov > 60:
         print("  [abort] 判定覆盖率 >60%，判据退化（坑 35 同类）—— 拒绝写出")
-        return
+        # 退出码 2：与「跑完了但没写出」区分开。原先 return 即 rc=0，调用方（含 Agent）
+        # 只看退出码会以为成功产出，等于把「没做」报成「做好了」。
+        sys.exit(2)
     if args.dry_run:
         print("  [dry] 仅统计，不写出")
         return
 
-    os.makedirs(args.out, exist_ok=True)
     full = np.zeros((h, w), np.uint8)
     full[y0:y1, x0:x1] = m
     for f, a, s in zip(files, arrs, subs):
@@ -131,11 +154,18 @@ def main():
                                     s.astype(np.float32)))
         out = a.astype(np.float32).copy()
         out[y0:y1, x0:x1] = out_sub
-        dst = os.path.join(args.out, os.path.basename(f))
-        Image.fromarray(np.clip(out, 0, 255).round().astype(np.uint8)).save(dst)
+        # 输出守卫：--out 传源目录时 join(basename) 会静默覆盖原图（同族 2026-09-08 踩过）。
+        dst = safe_target(f, args.out)
+        img_out = Image.fromarray(np.clip(out, 0, 255).round().astype(np.uint8))
+        if os.path.splitext(dst)[1].lower() in (".jpg", ".jpeg"):
+            # JPEG 是有损的：PIL 默认 quality=75，会把**水印区之外**的像素也重编码
+            # （实测 ROI 外最大改动 17 灰阶），A/B 对比能力当场作废。默认提到 95 并关色度下采样。
+            img_out.save(dst, quality=95, subsampling=0)
+        else:
+            img_out.save(dst)
         print(f"  [ok] {os.path.basename(f)}  反解区={pick.mean()*100:.1f}%  "
               f"inpaint区={base.mean()*100:.1f}%")
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_imprint", main)

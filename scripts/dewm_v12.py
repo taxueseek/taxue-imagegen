@@ -60,6 +60,7 @@ R² 要先跑完 k 拟合才有，等于把定位变成「先试两遍再挑」�
   python3 dewm_v12.py a.png --no-guard  # 关空白守卫（= v11 行为，A/B 用）
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -211,4 +212,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v12", main)

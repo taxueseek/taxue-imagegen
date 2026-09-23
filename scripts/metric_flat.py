@@ -13,6 +13,7 @@ audit 的 amp 是先拟合 k 再算幅度，对「形状失配」不敏感（R²
 平底图上 bg≈常数，理想值 RMS→0。纹理图（t2）此指标会含真实纹理，
 需结合对照带比值一起看，不能单独下结论。
 """
+import _log
 import os
 import sys
 
@@ -56,6 +57,16 @@ def metric(path, label=""):
     return rms
 
 
-if __name__ == "__main__":
+def _cli():
+    # 没有 argparse 的入口脚本必须**自己认掉 -h/--help**：否则它被默默忽略并直接干活。
+    # 2026-09-23（对抗性审查）：build_storyboard_ink.py --help 真写出 9 个 prompt 文件、
+    # test_jimeng.py --help 跑整套 43 项测试。问「怎么用」的动作把活干了，比报错更糟。
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return 0
     for p in sys.argv[1:]:
         metric(p, os.path.basename(os.path.dirname(p)) + "/" + os.path.basename(p))
+
+
+if __name__ == "__main__":
+    _log.run("metric_flat", _cli)

@@ -85,11 +85,48 @@ def _same_file(a, b):
     return os.path.normcase(ra) == os.path.normcase(rb)
 
 
-def _redirect(src, why):
-    """把输出重定向到源目录下的 _clean/ 子目录。"""
+def _redirect(src, why, name=None):
+    """把输出重定向到源目录下的 _clean/ 子目录。
+
+    `name` 让调用方保留自己的命名约定（rmwm 的 `_nw`、dewm2 的 `_dewm2` 等）；
+    不给时用源文件名。
+
+    **必须在这里 makedirs**（2026-09-23 修）：重定向的目标目录 `_clean/` 通常还不存在，
+    而所有调用方都假定「守卫返回的路径就是可直接写的」。原先只有 `safe_target` 的
+    正常分支建目录，走重定向分支时不建 —— 于是 `dewm_v10.py a.png --out <源目录>`
+    这类调用会以 `FileNotFoundError: .../_clean/a.png` 崩掉。既有测试只断言了
+    警告文案，没断言文件真被写出来，所以这条路径一直没被覆盖（也是同行评审本次发现）。
+    """
     d = os.path.dirname(os.path.abspath(src))
-    target = os.path.join(d, CLEAN_SUBDIR, os.path.basename(src))
+    target = os.path.join(d, CLEAN_SUBDIR, name or os.path.basename(src))
+    os.makedirs(os.path.dirname(target), exist_ok=True)
     print(f"  ⚠️  {why}\n      → 已重定向到 {target}（原图保持不变）", file=sys.stderr)
+    return target
+
+
+def guard_target(src, target, suffix=""):
+    """目标路径守卫：target 若与源文件是**同一个文件**，改写 `_clean/` 下的安全名。
+
+    只做这一件事，不接管既有命名规则——批量脚本的输出名各有约定（rmwm 带 `_nw`、
+    dewm2 带 `_dewm2`、rmwm_light 带 `_light`、dewm_imprint 保持原名），统一它们会
+    改变已发布的行为；而「不能等于源」这条与命名无关。
+
+    2026-09-23 实测（对抗性审查）：dewm2 / rmwm / rmwm_light / dewm_imprint 四处
+    **各自手写** `makedirs(out) + join(out, basename)`，`--out` 传源目录时全部
+    **静默覆盖原图**；`--out <符号链接>` 还能绕过 rmwm_light 里那条只比 `abspath`
+    的旧守卫。守卫本来就在本模块（`_real` + `_same_file` 连大小写变体与硬链接都堵死了），
+    只是**没人调用**——写在库里却没接线的守卫，等于没有守卫。
+    """
+    if _same_file(target, src):
+        stem, ext = os.path.splitext(os.path.basename(target))
+        if ext.lower() not in IMG_EXTS:
+            ext = os.path.splitext(src)[1] or ".png"
+        return _redirect(src, "输出路径与源文件是同一个文件"
+                              "（含大小写/硬链接/符号链接变体），拒绝覆盖",
+                         stem + suffix + ext)
+    d = os.path.dirname(os.path.abspath(target))
+    if d:
+        os.makedirs(d, exist_ok=True)
     return target
 
 

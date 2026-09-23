@@ -6,10 +6,10 @@
 四成左右的坑可以在提交前用文本规则拦住——把验收前置到提交前，
 单张直出才有可能。每条规则注释标明对应的坑号（见 references/pitfalls.md）。
 
-当前覆盖：pitfalls.md 共 35 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
-其余 22 个属像素级或工程级（去水印、并行撞名、路径名、纸白偏色等），需靠 postcheck / audit_wm /
+当前覆盖：pitfalls.md 共 37 个坑，其中 11 个可文本拦截（坑 1/3/5/8/9/10/11/12/14/16 + 残留槽位），
+其余 26 个属像素级或工程级（去水印、并行撞名、路径名、纸白偏色等），需靠 postcheck / audit_wm /
 paper_white 等运行时手段。
-11/34 ≈ 32%，即**近七成的坑在提交前拦不住**——preflight 是已知坑的防线，不是完备证明。
+11/37 ≈ 30%，即**七成的坑在提交前拦不住**——preflight 是已知坑的防线，不是完备证明。
 新翻车样本要回写 HUE_WORDS 等规则表，否则同类风险会静默放行。
 
 用法：
@@ -21,6 +21,7 @@ paper_white 等运行时手段。
 ⚠️（review 项）不阻断，但要逐条看完再提交。
 """
 
+import _log
 import argparse
 import re
 import sys
@@ -99,8 +100,11 @@ NOT_GRAY = re.compile(r"不是浅灰|not light gray|非浅灰|bright pure white|
 
 # 尺寸：只放行已实测精确输出的画幅（references/size-and-params.md）
 # 1024x1792 于 2026-09-08 分镜类型实测精确输出（实为 4:7，非精确 9:16）
+# 1536x864 于 2026-09-23 实测 3/3 精确输出（见 SKILL.md §2 的更正：16:9 可直接要，
+# 不必后期裁）。此前本表没跟着更新，于是「刚被实测证明可用」的尺寸反而被 preflight
+# 报成「不在已实测表」——**规则比事实慢一步**，正是这类表最该防的。
 TESTED_SIZES = {"1024x1024", "1024x1536", "1024x1280", "1152x1536", "1536x1024",
-                "1024x1792"}
+                "1024x1792", "1536x864"}
 SIZE_TOKEN = re.compile(r"\b(\d{3,4})\s*[x×]\s*(\d{3,4})\b")
 
 # 槽位：类型 A/B 用 {}，类型 C 模板用【】。两种都要能拦住未填槽位。
@@ -230,7 +234,13 @@ def check(text, track):
     # 跳过该子句，避免误报（类型 E 多格排版实测）。
     CELL_SIZE_CTX = re.compile(r"单格|每格|单帧|每帧|frame|cell", re.I)
     for m in SIZE_TOKEN.finditer(text):
-        line = text[text.rfind("\n", 0, m.start()) + 1:text.find("\n", m.end())]
+        # 2026-09-23 修：原先取 `text.find("\n", m.end())`，**末行无换行时返回 -1**，
+        # 切片退化成 `[start:-1]` —— 最后一个字符被吃掉。实测同一句「画布 2000x3000 每帧」：
+        # 不带尾换行时报「尺寸不在已实测表」，带上尾换行就通过。同一内容两种结论，
+        # 而 prompt 文件有没有尾换行纯看编辑器——这类判据必须与文件结尾无关。
+        nl = text.find("\n", m.end())
+        line = text[text.rfind("\n", 0, m.start()) + 1:
+                    len(text) if nl < 0 else nl]
         if CELL_SIZE_CTX.search(line):
             continue
         size = f"{m.group(1)}x{m.group(2)}"
@@ -269,7 +279,8 @@ def main():
     ap = argparse.ArgumentParser(description="出图前提示词静态检查（taxue-imagegen）")
     ap.add_argument("file", help="提示词文件路径，'-' 读 stdin")
     ap.add_argument("--track", choices=list(TRACKS), default="A",
-                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，D=叙事分镜")
+                    help="A=竖版概念海报（默认），B=手绘群像，C=包装 Mockup，"
+                         "D=叙事分镜，E=多格排版")
     args = ap.parse_args()
 
     if args.file == "-":
@@ -304,4 +315,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("preflight", main)

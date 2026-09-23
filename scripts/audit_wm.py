@@ -85,6 +85,7 @@ pick_wm 选的 v7 整区 inpaint 把水印抹成 0 残留（amp -0.20 判 CLEAN�
 依赖：opencv-python-headless、numpy（零模型，~0.5s/张）
 """
 
+import _log
 import argparse
 import glob
 import json
@@ -500,4 +501,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("audit_wm", main)

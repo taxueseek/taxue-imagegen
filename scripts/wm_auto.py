@@ -43,6 +43,7 @@ dewm 家族是**去不覆盖原图**（dewm_io 守卫，输出落 _clean/）。
 依赖：opencv-python-headless、numpy（与 dewm 家族一致，零模型，~0.5s/张）
 """
 
+import _log
 import os
 import sys
 
@@ -210,4 +211,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("wm_auto", main)

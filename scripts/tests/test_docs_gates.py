@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """文档与门禁域：front-matter（坑 31）、文档一致性、版本三方一致、
-常驻面分层契约、坑→检测层映射、隐私扫描，以及 SKILL.md ↔ verify 子技能一致性。"""
+常驻面分层契约、坑→检测层映射、隐私扫描、SKILL.md ↔ verify 子技能一致性，
+以及脚本 CLI 契约（每个用 argparse 的脚本，--help 必须能打印）。"""
 import glob
 import os
 import re
@@ -352,7 +353,143 @@ def test_skill_verify_consistency():
           "旧 blocker 在 verify 复活（202 张成品实测触发 82.2%）")
 
 
+def _entry_scripts():
+    """本目录下「真有 __main__ 块」的入口脚本。
+
+    判据必须是**顶格**的 `if __name__ == "__main__":`：_log.py 的模块 docstring
+    里就有这句（当用法示例写着），用子串匹配会把它当成入口，于是「谁从没被调用过」
+    里永远挂着一条假记录。`^` + re.M 刚好把缩进的那句排除掉。
+    """
+    scripts_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = []
+    for path in sorted(glob.glob(os.path.join(scripts_dir, "*.py"))):
+        try:
+            src = open(path, encoding="utf-8").read()
+        except OSError:
+            continue
+        if re.search(r'^if __name__ == "__main__":', src, re.M):
+            out.append((path, src))
+    return out
+
+
+def test_missing_dep_guard():
+    """一类 bug：脚本碰了 cv2/numpy/PIL，却没接 _env 的「缺依赖说人话」。
+
+    2026-09-23 实测：dewm_imprint.py（v1.21.0 新增）顶层直接 import cv2/numpy，
+    彼时同族另外 23 个脚本都接了 _env，只有它漏了。后果是缺依赖时甩一屏 traceback，
+    而 _env 存在的全部意义就是消掉这一屏——新脚本漏接属于**结构性问题**，
+    靠人眼复查必然复发，故立门禁。
+
+    判据（可证伪、不靠词表）：
+      · 入口脚本（有 __main__ 块）、非 test_*.py、源码里出现 cv2/numpy/from PIL
+      · ⇒ 必须出现 _env
+    test_*.py 豁免：它们在**字符串**里提到这些包名（模拟缺依赖），并不真的 import。
+    """
+    offenders = []
+    checked = 0
+    for path, src in _entry_scripts():
+        base = os.path.basename(path)
+        if base.startswith("test_"):
+            continue
+        if not re.search(r"\b(?:cv2|numpy)\b|from PIL", src):
+            continue
+        checked += 1
+        if "_env" not in src:
+            offenders.append(base)
+    check("依赖自检门禁确实覆盖到脚本", checked >= 15,
+          f"只扫到 {checked} 个，判据可能已失效")
+    check("碰重型依赖的入口脚本都接了 _env（缺依赖说人话）", not offenders,
+          "漏接：" + "、".join(offenders[:3]))
+
+
+def test_log_instrumentation():
+    """一类 bug：新入口脚本忘了接本地使用日志（scripts/_log.py）。
+
+    日志靠「每个入口脚本一行 _log.run(...)」采集。漏一个不会报错，只会让
+    log_report.py 的「谁在用 / 谁从没被调用过」悄悄失真——**静默的数据缺口比
+    报错更坏**（同 v1.20.1 的 runs.csv 错列：错得没有声音，正好废掉归因本身）。
+    故按 _env 的同一模式立门禁。
+
+    log_report.py 豁免：它是日志的**读者**，让它每次分析都往被分析的日志里写一行，
+    等于自己改自己要看的数据。这条豁免写在这里，不藏在别处。
+    """
+    missing = [os.path.basename(p) for p, src in _entry_scripts()
+               if os.path.basename(p) != "log_report.py" and "_log.run(" not in src]
+    total = len([1 for p, _ in _entry_scripts() if os.path.basename(p) != "log_report.py"])
+    check("日志接入门禁确实覆盖到入口脚本", total >= 25,
+          f"只扫到 {total} 个，判据可能已失效")
+    check("所有入口脚本都接了 _log.run（本地使用日志）", not missing,
+          "漏接：" + "、".join(missing[:5]))
+
+
+def test_argparse_help_survives():
+    """CLI 契约：任何用 argparse 的脚本，`--help` 都必须能打印出来。
+
+    2026-09-23 实测（H2 批次出图时踩到）：dewm_imprint.py 的 `--roi` help 写了
+    「默认右下角 15% x 12%」，而 argparse 会拿 help 文本做 %-格式化 →
+    `TypeError: %x format: an integer is required, not dict`，`--help` 直接崩栈、
+    退出码 1。help 里要显示百分号必须写成 `%%`。
+
+    崩的是**帮助文本**而不是主流程，所以主流程实测全绿也照样带着这个缺陷
+    ——同类只有 `--help` 这条路径能覆盖，故单独立一个门禁。
+
+    判据只认「在 argparse 内部崩」（stderr 有 argparse.py 且退出码非 0）：
+    某个脚本压根没定义 --help 不算这一类缺陷，不判失败。
+    """
+    import subprocess
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    scripts_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    targets = []
+    for path in sorted(glob.glob(os.path.join(scripts_dir, "*.py"))):
+        try:
+            src = open(path, encoding="utf-8").read()
+        except OSError:
+            continue
+        if "argparse.ArgumentParser" in src:
+            targets.append(path)
+
+    def probe(path):
+        # --help 要先 import 完才会崩在 argparse 上，而本目录脚本普遍 import
+        # numpy/cv2，单个约 1–2 s；串行跑二十来个会把门禁拖到半分钟以上，
+        # 故并发探测。超时给足（首次 import 冷启动）。
+        r = subprocess.run([sys.executable, path, "--help"],
+                           capture_output=True, text=True, timeout=120)
+        blob = (r.stdout or "") + (r.stderr or "")
+        if r.returncode != 0 and "argparse.py" in blob:
+            last = [l for l in blob.strip().splitlines() if l.strip()][-1]
+            return f"{os.path.basename(path)}: {last}"
+        return None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        broken = [b for b in ex.map(probe, targets) if b]
+
+    check("CLI help 门禁确实覆盖到 argparse 脚本", len(targets) >= 5,
+          f"只扫到 {len(targets)} 个，判据可能已失效")
+    check("所有 argparse 脚本 --help 不在 argparse 内部崩溃", not broken,
+          "；".join(broken[:3]))
+
+    # 一类 bug：**没有 argparse 的入口脚本会默默忽略 --help 并直接把活干了**。
+    # 2026-09-23 实测两例：`build_storyboard_ink.py --help` 真写出 9 个 prompt 文件、
+    # `test_jimeng.py --help` 跑完整套 43 项测试。一个「问怎么用」的动作把活干了，
+    # 比报错更糟——调用方以为只是在看帮助。
+    # 判据：入口脚本要么用 argparse（--help 由它接管），要么源码里显式认 -h/--help。
+    silent = []
+    for path, src in _entry_scripts():
+        base = os.path.basename(path)
+        if "argparse.ArgumentParser" in src:
+            continue
+        if '"-h"' in src or "'-h'" in src or '"--help"' in src or "'--help'" in src:
+            continue
+        silent.append(base)
+    check("无 argparse 的入口脚本也认 --help（不默默干活）", not silent,
+          "忽略 --help：" + "、".join(silent[:4]))
+
+
 TESTS = [test_skill_frontmatter_window_free, test_doc_consistency,
          test_version_consistency, test_surface_layering, test_pitfall_coverage,
          test_no_machine_paths, test_skill_verify_consistency,
-         test_skill_dir_not_hardcoded]
+         test_skill_dir_not_hardcoded, test_missing_dep_guard,
+         test_log_instrumentation, test_argparse_help_survives]

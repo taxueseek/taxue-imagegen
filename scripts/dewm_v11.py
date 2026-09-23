@@ -56,6 +56,7 @@ t1_poster（已目视确认干净）平底 RMS 保持 1.42 不变。
   python3 dewm_v11.py a.png --no-dark        # 关闭暗区修正（= v10 行为，A/B 用）
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -234,4 +235,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v11", main)

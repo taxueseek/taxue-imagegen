@@ -16,9 +16,15 @@ postcheck / dewm / 文档门禁）。拆分是纯搬运：断言逐字未改，�
   python3 scripts/test_regressions.py      # 退出码 0=全过，1=有失败
   bash scripts/run_tests.sh                # 集成进总套件
 """
+import _log
 import os
 import sys
 import traceback
+
+# 测试跑出来的调用不算「使用数据」。run_tests.sh 也设了同一个变量，这里再设一次是
+# 为了「直接 python3 scripts/test_regressions.py」这条路径——本模块会 subprocess 起
+# 几十个被测脚本，不掐掉就会往 usage.jsonl 里灌几十条噪声（子进程继承本进程环境）。
+os.environ.setdefault("TAXUE_LOG", "0")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tests"))
@@ -35,6 +41,11 @@ MODULES = (test_preflight, test_fill_meta, test_postcheck, test_dewm, test_docs_
 
 
 def main():
+    # 没有 argparse 的入口脚本必须**自己认掉 -h/--help**：否则它被默默忽略并直接干活。
+    # 本文件被忽略时 `--help` 会跑完整套回归（几百条断言）——问「怎么用」把活干了。
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return 0
     print("== taxue-imagegen regression tests ==")
     for mod in MODULES:
         for fn in mod.TESTS:
@@ -55,4 +66,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_log.run("test_regressions", main))

@@ -140,11 +140,6 @@ E 的格数校验要显式给 `--expect-cells`（如 `--expect-cells 9`）。
 
 ## 7. 相关文件
 
-| 文件 | 用途 |
-|---|---|
-| `scripts/postcheck.py` | 一次调用入口（量测 + 裁片 + 水印 + 记账） |
-| `scripts/wm_auto.py` | 水印自动识别与条件去除（双条件闸门 + 复检） |
-| `scripts/measure.py` | 量测层：`metrics()` 通用指标、`grid_metrics()` 类型 E 网格结构 |
-| `scripts/audit_wm.py` | 残留与结构损伤审计（报告模式，含 `--ref` 选版） |
-| `scripts/pick_wm.py` | 疑难水印四版选优 |
-| `evidence.md` | 本子技能全部阈值的实测依据与样本量 |
+本层用到的脚本与文件，逐行索引在父技能 `SKILL.md` §8（含 `postcheck.py` / `wm_auto.py` /
+`measure.py` / `audit_wm.py` / `pick_wm.py`），此处不再重列。本层独有的只有 `evidence.md`
+——本子技能全部阈值的实测依据与样本量，改判据前先读它。

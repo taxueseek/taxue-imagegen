@@ -45,6 +45,7 @@ v6/v7 仍作为**候选**参与竞争，只是不当参照。
 依赖：dewm_io / dewm / dewm_v7 / dewm_v8 / dewm_v9 / audit_wm（同目录）
 """
 
+import _log
 import argparse
 import glob
 import json
@@ -353,4 +354,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("pick_wm", main)

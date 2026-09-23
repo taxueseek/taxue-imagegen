@@ -1,7 +1,7 @@
 # 踩坑记录 · 按症状速查
 
 **怎么用**：用「你看到的现象」找行，不要用「你猜的根因」找行。看到坑号后只看那一节——
-本文件 104 KB，整读是浪费；定位某一节（`SKILL` 的取值见 SKILL.md §5）：
+本文件约 114 KB，整读是浪费；定位某一节（`SKILL` 的取值见 SKILL.md §5）：
 
 ```bash
 SKILL=~/.workbuddy/skills/taxue-imagegen   # 换宿主/换机先确认（SKILL.md §7 硬规则 4）

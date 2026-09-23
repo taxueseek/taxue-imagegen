@@ -29,6 +29,7 @@
    请改用平台自带的 AI 内容声明，不要默默去掉标识后当原创发布。
 """
 
+import _log
 import argparse
 import os
 import shutil
@@ -42,6 +43,9 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
     _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     import _env
     _env.die(_e, ['cv2', 'numpy'])
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dewm_io import guard_target  # noqa: E402
 
 # 水印修复框（相对整图尺寸的比例，2026-09-07 在 1024x1280 / 1024x1536 上实测校准）
 # 覆盖 ~111x51px 的水印本体 + 安全余量
@@ -82,8 +86,9 @@ def resolve_out_path(src, out, suffix="_nw"):
     if not out:
         return os.path.join(os.path.dirname(src), os.path.basename(stem) + suffix + ext)
     if os.path.splitext(out)[1].lower() in (".png", ".jpg", ".jpeg", ".webp"):
-        return out
-    return os.path.join(out, os.path.basename(stem) + suffix + ext)
+        # 2026-09-23：`--out` 是文件路径且恰好等于源文件时，下面直接返回它 = 静默覆盖原图。
+        return guard_target(src, out, suffix)
+    return guard_target(src, os.path.join(out, os.path.basename(stem) + suffix + ext), suffix)
 
 
 def watermark_box(w, h, pad=1.0):
@@ -212,4 +217,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("rmwm", main)

@@ -41,6 +41,7 @@
 依赖：opencv-python-headless、numpy（零模型，0.2s/张，内存 <100MB）
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -115,4 +116,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm", main)

@@ -34,6 +34,7 @@ audit 的 amp 判 v9 输出 CLEAN（t1 amp 0.95、R² 0.005），但人眼仍见
   python3 dewm_v10.py a.png --flat-thr 20   # 放宽平底判据
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -245,4 +246,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v10", main)

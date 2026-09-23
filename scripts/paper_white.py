@@ -15,6 +15,7 @@ postcheck 因此稳定判 `R-B≥3 泛黄前兆` + `white%` 极低（白底像�
 
 墨、字、彩色强调区（权重≈0）逐位不变；输出永不覆盖原图（落 _clean/）。
 """
+import _log
 import argparse
 import os
 import sys
@@ -121,4 +122,4 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_log.run("paper_white", main))

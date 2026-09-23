@@ -583,7 +583,113 @@ def test_missing_dep_message():
               (not good) or bool(found), f"good={good} found={found}")
 
 
-TESTS = [test_overwrite_guard, test_solvability_guard, test_pick_wm_damage_aware,
+# ── 一类 bug：批量脚本各自的 --out 解析绕过了共享守卫 ──────────────
+def test_batch_out_guard():
+    """2026-09-23（对抗性审查实测）：**四处**批量脚本各自手写 `makedirs(out)+join(basename)`，
+    `--out` 传源目录时全部**静默覆盖原图**——而 dewm_io 里就有一条把大小写变体、硬链接、
+    符号链接都堵死的守卫（`_real` + `_same_file`），只是这四个脚本没调用它。
+
+    顺带暴露一条更深的缺陷：`safe_target` 走到**重定向分支**时不建 `_clean/` 目录，
+    于是 `dewm_v10.py a.png --out <源目录>` 会以 FileNotFoundError 崩掉。
+    既有的 test_overwrite_guard 只断言了「返回路径里有 _clean」，**没断言那个目录存在、
+    更没断言文件真被写出来**，所以这条路径一直没被覆盖。
+
+    本用例两条判据都要：
+      ① 单元层：守卫返回的重定向目标，其父目录必须已存在（否则调用方必崩）；
+      ② 行为层：四个脚本真的跑一遍 `--out <源目录>`，**原图字节不得改变**，
+         且确实产出了文件（不能靠「什么都不写」来满足第①条）。
+    """
+    import hashlib
+    from PIL import Image
+
+    io = load("dewm_io")
+
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "a.png")
+        Image.new("RGB", (256, 384), (246, 244, 238)).save(src)
+
+        # ① 重定向目标可直接写（父目录已建）
+        t = io.safe_target(src, d)
+        check("重定向目标所在目录已存在（否则调用方必崩）",
+              os.path.isdir(os.path.dirname(t)),
+              f"{os.path.dirname(t)} 不存在 —— 调用方会 FileNotFoundError")
+        t2 = io.guard_target(src, os.path.join(d, "a.png"), "_x")
+        check("guard_target 重定向后目录同样已建",
+              os.path.isdir(os.path.dirname(t2)), f"{t2} 的目录不存在")
+        check("guard_target 保留调用方的命名后缀", "_x" in os.path.basename(t2),
+              f"后缀丢失：{t2}")
+
+        def digest(p):
+            return hashlib.md5(open(p, "rb").read()).hexdigest()
+
+        def snapshot(root):
+            out = set()
+            for dirpath, _dirs, files in os.walk(root):
+                for fn in files:
+                    out.add(os.path.relpath(os.path.join(dirpath, fn), root))
+            return out
+
+        base = digest(src)
+        # ② 四个脚本各跑一遍（--out 传源目录 = 最容易静默覆盖的用法）
+        # 判据只认「原图字节不变」+「确实多出了文件」，**不认任何具体文件名**——
+        # 各脚本的命名约定不同（rmwm 写 <源目录>/a_nw.png、其余写 _clean/），
+        # 把命名写进断言会让门禁变成「实现细节检查」，改个后缀就假红。
+        for script in ("dewm2", "rmwm", "rmwm_light", "dewm_imprint"):
+            before_files = snapshot(d)
+            before = digest(src)
+            r = subprocess.run([sys.executable, os.path.join(HERE, script + ".py"),
+                                src, "--out", d],
+                               capture_output=True, text=True, timeout=180)
+            after = digest(src)
+            new_files = snapshot(d) - before_files
+            check(f"{script} --out 传源目录：原图未被覆盖", before == after,
+                  f"原图被改（rc={r.returncode}）{(r.stdout or '')[-160:]}")
+            check(f"{script} --out 传源目录：确实产出了文件（不是靠不干活蒙混）",
+                  bool(new_files),
+                  f"rc={r.returncode} 没有新文件；out={((r.stdout or '') + (r.stderr or ''))[-200:]}")
+
+        check("四个脚本跑完，源文件最终字节未变", digest(src) == base, "原图最终被改动")
+
+
+# ── 一类 bug：静默产出坏图并报成功 ────────────────────────────────
+def test_imprint_input_hygiene():
+    """2026-09-23（对抗性审查）：dewm_imprint 曾把 16 位输入**静默**变成坏图。
+
+    `Image.open(f).convert("RGB")` 对 mode 为 I / I;16 / F 的图会按 255 截断：
+    实测一张值域 40000–60000 的 16 位灰图产出 **100% 纯白**的输出，脚本照旧打印 `[ok]`。
+    「产出坏图 + 报成功」比直接报错坏得多——调用方会把纯白图当成品交付。
+    故立此门禁：>8 位输入必须**拒绝并说清原因**（退出码非 0），不得写出任何文件。
+
+    判据用「有没有产出文件」而不只看退出码：只看码的话，将来有人改成
+    「先写坏图再报错」也能过。
+    """
+    import numpy as np
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as d:
+        g16 = os.path.join(d, "g16.png")
+        a = np.full((512, 512), 40000, dtype=np.uint16)
+        a[400:460, 400:480] = 60000
+        Image.fromarray(a).save(g16)
+        check("夹具确实是 >8 位输入（判据前提成立）",
+              Image.open(g16).mode in ("I", "I;16", "I;16B", "I;16L", "I;16N", "F"),
+              f"mode={Image.open(g16).mode}")
+
+        out_dir = os.path.join(d, "out")
+        r = subprocess.run([sys.executable, os.path.join(HERE, "dewm_imprint.py"),
+                            g16, "--out", out_dir],
+                           capture_output=True, text=True, timeout=180)
+        blob = (r.stdout or "") + (r.stderr or "")
+        produced = os.path.isdir(out_dir) and os.listdir(out_dir)
+        check("16 位输入被拒绝（非 0 退出码）", r.returncode != 0,
+              f"rc={r.returncode}")
+        check("16 位输入不产出任何文件（不许先写坏图再报错）", not produced,
+              f"产出了 {produced}")
+        check("拒绝理由说清了是位深问题", "8 位" in blob or "16" in blob,
+              f"理由不可读：{blob[-160:]}")
+
+
+TESTS = [test_overwrite_guard, test_imprint_input_hygiene, test_batch_out_guard, test_solvability_guard, test_pick_wm_damage_aware,
          test_pick_wm_noop_policy, test_pick_wm_ambiguous_hold,
          test_audit_unique_keys, test_wm_metrics_reference_free,
          test_v13_wiener_invariants, test_wm_auto_gate,

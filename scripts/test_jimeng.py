@@ -14,12 +14,16 @@
 不依赖 numpy / PIL / cv2 / 网络，豆包与 WorkBuddy 均可跑。
 用法：python3 scripts/test_jimeng.py   # 0=全过，1=有失败
 """
+import _log
 import importlib.util
 import os
 import subprocess
 import sys
 import tempfile
 from unittest import mock
+
+# 同 test_regressions.py：测试跑的调用不算使用数据（子进程继承本进程环境）。
+os.environ.setdefault("TAXUE_LOG", "0")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 _results = []
@@ -201,6 +205,11 @@ def test_no_rewrite_helpers():
 
 
 def main():
+    # 2026-09-23：本文件没有 argparse，`--help` 曾被忽略并**直接跑全套测试**——
+    # 一个「问怎么用」的动作不该产生 43 条测试输出。显式认掉 -h/--help。
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return 0
     print("== jimeng.py adapter tests (size-only, no prompt rewrite) ==")
     for fn in (test_fingerprint_match, test_adjudicate,
                test_simulated_doubao_runtime, test_simulated_workbuddy_runtime,
@@ -221,4 +230,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_log.run("test_jimeng", main))

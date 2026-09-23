@@ -19,6 +19,7 @@ WorkBuddy 生图质量快检（配套 skill: taxue-imagegen）
 判定阈值见 SKILL.md 第 4 节。
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -364,4 +365,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("measure", main)

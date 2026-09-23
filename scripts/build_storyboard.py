@@ -15,6 +15,7 @@
 两个案例的差异只有 STYLE_LOCK / CHARACTER_LOCK / NEG / SCENES 四段数据，
 组装逻辑共用 build()（此前两份脚本 main() 逐字重复，改一处要改两处）。
 """
+import _log
 import argparse
 import os
 
@@ -105,4 +106,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("build_storyboard", main)

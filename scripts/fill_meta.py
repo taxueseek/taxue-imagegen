@@ -23,6 +23,7 @@
       输出该主题完整英文提示词（正向 + 负向）
 """
 
+import _log
 import argparse
 import os
 import re
@@ -46,6 +47,30 @@ FORBIDDEN_PLAIN = list("{}【】")
 def fail(msg):
     print(f"fill_meta: {msg}", file=sys.stderr)
     sys.exit(2)
+
+
+def write_out(path, text):
+    """把组装结果写到 --out。**写失败是环境问题，不是内容问题**（2026-09-23 修）。
+
+    此前四处都直接 `open(args.out, "w").write(...)`：目录不存在 → FileNotFoundError、
+    `--out` 传目录 → IsADirectoryError，两者都是**未捕获异常 = 退出码 1**，而 1 在本脚本
+    的契约里表示「preflight 有阻断项」——调用方会把「没写成功」读成「提示词有问题」。
+    而 prompt 全文此时已经打到 stdout，很容易被当成「写成功了、只是有阻断」。
+
+    故：目录先建；目标是目录则明确报错；写失败统一退出码 4（与 1/2 区分开）。
+    """
+    d = os.path.dirname(os.path.abspath(path))
+    if os.path.isdir(path):
+        fail(f"--out 指向的是一个目录：{path}（应给文件路径）")
+    try:
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError as e:
+        print(f"fill_meta: --out 写入失败（环境问题，不是提示词问题）：{e}", file=sys.stderr)
+        sys.exit(4)
+    print(f"written: {path}", file=sys.stderr)
 
 
 def load_track_a_template():
@@ -185,8 +210,7 @@ def do_track_a(args):
     for line in lines:
         print(line, file=sys.stderr)
     if args.out:
-        open(args.out, "w", encoding="utf-8").write(result)
-        print(f"written: {args.out}", file=sys.stderr)
+        write_out(args.out, result)
     sys.exit(1 if blocked else 0)
 
 
@@ -251,8 +275,7 @@ def do_track_b(args):
     )
     print(note, file=sys.stderr)
     if args.out:
-        open(args.out, "w", encoding="utf-8").write(section)
-        print(f"written: {args.out}", file=sys.stderr)
+        write_out(args.out, section)
 
 
 def load_track_c_template():
@@ -337,8 +360,7 @@ def do_track_e(args):
     for line in lines:
         print(line, file=sys.stderr)
     if args.out:
-        open(args.out, "w", encoding="utf-8").write(result)
-        print(f"written: {args.out}", file=sys.stderr)
+        write_out(args.out, result)
     sys.exit(1 if blocked else 0)
 
 
@@ -398,8 +420,7 @@ def do_track_c(args):
     for line in lines:
         print(line, file=sys.stderr)
     if args.out:
-        open(args.out, "w", encoding="utf-8").write(result)
-        print(f"written: {args.out}", file=sys.stderr)
+        write_out(args.out, result)
     sys.exit(1 if blocked else 0)
 
 
@@ -425,4 +446,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("fill_meta", main)

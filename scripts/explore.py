@@ -18,6 +18,7 @@ CSV 表头：num,style,topic,intent,subject,en,cn,ens,manpu
 纪律：出图每批 ≤ 3 张（防同秒时间戳撞名），立即 ls 核对 + settle 改名锁定。
 """
 
+import _log
 import argparse
 import csv
 import json
@@ -68,8 +69,14 @@ def build(csv_path, out_dir):
         if manpu:
             args.append("--manpu")
         args += ["--out", out_txt]
-        rc = subprocess.call(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 2026-09-23 修：原来 stderr 也被吞掉，失败只剩一个 FAIL 字样，原因无处可查。
+        # 保留 stdout 静默（prompt 全文没必要回显），但把 stderr 收下来，失败时打末尾几行。
+        r = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        rc = r.returncode
         ok = (rc == 0) and os.path.exists(out_txt)
+        if not ok:
+            why = [l for l in (r.stderr or "").strip().splitlines() if l.strip()][-3:]
+            print("\n".join(f"      {l}" for l in why) or f"      rc={rc}", file=sys.stderr)
         manifest["items"].append({
             "num": num, "name": name, "style": style,
             "topic": r["topic"].strip(),
@@ -83,8 +90,12 @@ def build(csv_path, out_dir):
     mp = os.path.join(out_dir, "manifest.json")
     with open(mp, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
-    print(f"manifest -> {mp}  ({len(rows)} items)")
-    return 0
+    bad = [it["num"] for it in manifest["items"] if not it["ok"]]
+    print(f"manifest -> {mp}  ({len(rows)} items)"
+          + (f"，**失败 {len(bad)} 项：{', '.join(bad)}**" if bad else "，全部 ok"))
+    # 有失败项时必须回传非 0（2026-09-23 修）：此前恒 return 0，
+    # 「01 FAIL」之后脚本仍报成功，批量流程会把半成品当成品往下走。
+    return 1 if bad else 0
 
 
 def settle(img_dir, manifest_path, apply=False):
@@ -149,4 +160,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("explore", main)

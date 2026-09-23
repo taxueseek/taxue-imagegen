@@ -29,6 +29,7 @@ v7 思路：放弃数学反解，改用「α 模板做 mask + cv2.inpaint」。
 
 依赖：opencv-python-headless、numpy（零模型，0.3s/张）
 """
+import _log
 import argparse, os, sys
 try:
     import cv2
@@ -88,4 +89,4 @@ def main():
         save_crop(out, path, args.crop, multi)
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v7", main)

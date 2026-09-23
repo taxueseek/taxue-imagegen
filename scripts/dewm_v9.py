@@ -28,6 +28,7 @@ v8 解决了「强度失配」（平台逐图调不透明度 → 最小二乘拟
 依赖：opencv-python-headless、numpy（零模型，~0.5s/张）
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -289,4 +290,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v9", main)

@@ -36,6 +36,7 @@ postcheck 的 blocker 在评审卡里等于「允许一次定向重生」，而�
   · 别只看总触发率：先按场景（白底/纸底、各 track）分组，分不开的阈值就是
     绝对值误用，应该改成相对量或分场景门控。
 """
+import _log
 import argparse
 import glob
 import importlib.util
@@ -168,4 +169,4 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_log.run("calibrate_thresholds", main))

@@ -36,6 +36,13 @@ import sys
 MANAGED_HINT = "~/.workbuddy/binaries/python/envs/default/bin/python3"
 PKG_HINT = {"cv2": "opencv-python-headless", "PIL": "pillow", "numpy": "numpy"}
 
+# 探针超时与缓存（2026-09-23 加）：
+#   · 单次 30s × 最多 5 个候选 = 最坏 150s —— 「诊断」本身把用户挂住，比不诊断更糟。
+#     10s 足够一次 import 完成（正常 <1s）；真挂住的解释器也不值得等。
+#   · 同一进程内同一 (解释器, 模块集) 只探一次。
+PROBE_TIMEOUT = 10
+_PROBE_CACHE = {}
+
 
 def _pkg_of(exc):
     """从异常里尽量确定「缺的是哪个包」。确定不了就返回 None——不猜。"""
@@ -56,12 +63,17 @@ def _probe(path, modules):
     mods = sorted({m for m in (modules or []) if m})
     if not mods:
         return None
+    key = (path, tuple(mods))
+    if key in _PROBE_CACHE:
+        return _PROBE_CACHE[key]
     try:
         r = subprocess.run([path, "-c", "import " + ", ".join(mods)],
-                           capture_output=True, timeout=30)
+                           capture_output=True, timeout=PROBE_TIMEOUT)
     except Exception:  # 解释器坏掉 / 超时 / 无执行权限，都算不可用
+        _PROBE_CACHE[key] = False
         return False
-    return r.returncode == 0
+    _PROBE_CACHE[key] = (r.returncode == 0)
+    return _PROBE_CACHE[key]
 
 
 def _living_interpreters(modules=None):
@@ -96,9 +108,13 @@ def die(exc, modules=None):
         print("   本脚本需要：" + "、".join(modules), file=sys.stderr)
     # 探针探「缺的那个东西」：调用方给了 modules 就用它，否则用从异常里认出来的包名。
     # 两者都拿不到时 `_probe` 返回 None，候选只按存在性收——不猜，也不假装验证过。
+    # 2026-09-23 修：**没有做探针时不能声称「已实测能导入」**——那正是 _env 存在的意义
+    # （此前 `_env.die(ValueError('boom'))` 会打出「已实测能导入」而根本没探过任何东西）。
+    probed = bool(modules or pkg)
     living = _living_interpreters(modules or ([pkg] if pkg else None))
     if living:
-        print(f"   ① 换解释器重跑（已实测能导入）：{' 或 '.join(living)}", file=sys.stderr)
+        how = "已实测能导入" if probed else "未做可用性验证，仅列出本机存在的解释器"
+        print(f"   ① 换解释器重跑（{how}）：{' 或 '.join(living)}", file=sys.stderr)
     else:
         print("   ① 换解释器重跑：本机没找到已带齐依赖的解释器"
               "（WorkBuddy 内置那个一般已带齐，仅 WorkBuddy 机上有）", file=sys.stderr)

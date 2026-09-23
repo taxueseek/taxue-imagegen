@@ -8,6 +8,11 @@
 # 这样「本地绿、CI 红」不会再出现：同一套脚本，按环境自动取舍。
 set -euo pipefail
 
+# 测试跑出来的调用不算「使用数据」——否则 scripts/logs/usage.jsonl 会被
+# 每次跑测试灌进上百条噪声，把 log_report.py 的统计淹掉。
+# 子进程（含被测脚本的 subprocess 调用）全部继承，一处设好即可。
+export TAXUE_LOG=0
+
 cd "$(dirname "$0")/.."
 echo "== taxue-imagegen test suite =="
 
@@ -49,8 +54,14 @@ echo "[1/8] import-check all scripts"
 ok=1
 for f in scripts/*.py; do
     if "$PYBIN" -c "
-import importlib.util, pathlib
+import importlib.util, os, pathlib, sys
 p = pathlib.Path('$f')
+# 必须把脚本自己所在的目录放进 sys.path —— 这正是「python3 scripts/x.py」的真实
+# 运行方式（此时 sys.path[0] 就是 scripts/）。少了这一行，任何顶层 import _log
+# 或 from dewm_io import ... 都会假失败，把人引到「脚本坏了」的错方向上。
+# 2026-09-23 加：接本地日志时 31 个脚本全被这一步判红，实际都能正常跑。
+# 【注意】本代码块在双引号里展开，注释中不得出现反引号或 $()，否则被 bash 当命令执行。
+sys.path.insert(0, os.path.dirname(os.path.abspath(str(p))))
 spec = importlib.util.spec_from_file_location(p.stem, p)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)

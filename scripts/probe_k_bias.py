@@ -7,6 +7,7 @@
 
 对照实验：把 mask 阈值放宽到 a>0.01（把所有受水印影响像素都排除在 inpaint 源之外）。
 """
+import _log
 import os
 import sys
 
@@ -47,6 +48,12 @@ def fit_k(wm, a, x0, y0, mask_thr, C=255.0):
 
 
 def main():
+    # 没有 argparse 的入口脚本必须**自己认掉 -h/--help**：否则它被默默忽略并直接干活。
+    # 2026-09-23（对抗性审查）：build_storyboard_ink.py --help 真写出 9 个 prompt 文件、
+    # test_jimeng.py --help 跑整套 43 项测试。问「怎么用」的动作把活干了，比报错更糟。
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__.strip())
+        return 0
     if not IMGS:
         sys.exit("未指定测试底图：请设 TAXUE_BENCH_IMGS（os.pathsep 分隔的图片路径）后重跑。")
     a, (x0, y0) = v8mod.load_template(1024, 1536)
@@ -67,4 +74,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("probe_k_bias", main)

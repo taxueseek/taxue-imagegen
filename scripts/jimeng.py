@@ -35,6 +35,7 @@
   python3 jimeng.py A … --platform workbuddy      # 强制 WorkBuddy（等价直接跑 fill_meta）
 """
 
+import _log
 import argparse
 import os
 import re
@@ -211,13 +212,21 @@ def get_jimeng_size(ratio=DEFAULT_RATIO):
 
 
 def ratio_from_passthrough(rest):
-    """从透传给 fill_meta 的参数里解析 `--set 比例=x`；缺省与 fill_meta 默认一致。"""
+    """从透传给 fill_meta 的参数里解析 `--set 比例=x`；缺省与 fill_meta 默认一致。
+
+    **重复给 `--set 比例` 时取最后一个**（2026-09-23 修）：fill_meta 把 --set 收进
+    dict（后者覆盖前者），而这里原先 `return` 第一个匹配 —— 于是
+    `--set 比例=3:4 --set 比例=9:16` 的产物是 9:16，stderr 却报「比例 ratio：3:4 /
+    width=1728 height=2304」。报出来的尺寸与真实产物不一致，比不报更误导。
+    本函数只负责协商比例，不重写 prompt，故对齐到 fill_meta 的语义即正确解。
+    """
+    found = None
     for i, tok in enumerate(rest):
         if tok == "--set" and i + 1 < len(rest) and rest[i + 1].startswith("比例="):
-            return rest[i + 1].split("=", 1)[1].strip()
-        if tok.startswith("--set=比例="):
-            return tok.split("比例=", 1)[1].strip()
-    return DEFAULT_RATIO
+            found = rest[i + 1].split("=", 1)[1].strip()
+        elif tok.startswith("--set=比例="):
+            found = tok.split("比例=", 1)[1].strip()
+    return found if found else DEFAULT_RATIO
 
 
 def print_sizes():
@@ -300,4 +309,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("jimeng", main)

@@ -69,6 +69,7 @@ blend ≤ I 自动满足，不必再夹最终结果（夹最终结果会在先�
   python3 dewm_v13.py a.png --sigma-b 5 --out-root /tmp/x
 """
 
+import _log
 import argparse
 import os
 import sys
@@ -214,4 +215,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm_v13", main)

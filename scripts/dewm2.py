@@ -21,6 +21,7 @@ dewm2.py —— 逐像素·带校验的反向 Alpha 去水印（零模型 / 经�
 默认只处理右下角 ROI（多数生图模型把 "AI 生成" 类水印放这里）；--box 自定义，--full 全图。
 输出默认写到 <原名>_dewm2.<ext>，永不覆盖原图。
 """
+import _log
 import argparse, os, sys, glob
 
 try:
@@ -31,6 +32,9 @@ except ImportError as _e:          # 缺依赖时说人话，别甩 traceback（
     _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     import _env
     _env.die(_e, ['numpy', 'cv2'])
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dewm_io import guard_target  # noqa: E402
 
 
 def parse_colors(s):
@@ -124,8 +128,9 @@ def process(path, args, colors):
 
     stem, ext = os.path.splitext(path)
     if args.out:
-        os.makedirs(args.out, exist_ok=True)
-        target = os.path.join(args.out, os.path.basename(path))
+        # 输出守卫（dewm_io.guard_target）：--out 传源目录时 join(basename) 会静默覆盖
+        # 原图；同族其它脚本用 safe_target，本脚本的输出名沿用原名，故走 guard_target。
+        target = guard_target(path, os.path.join(args.out, os.path.basename(path)), "_dewm2")
     else:
         target = f"{stem}_dewm2{ext}"
     save_rgb(target, out, alpha)
@@ -238,4 +243,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _log.run("dewm2", main)
